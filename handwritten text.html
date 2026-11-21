@@ -1,0 +1,3504 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Handwriter Pro — рукописный текст + ИИ</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+    <style>
+        :root { --primary: #4a90e2; --bg: #eef2f5; --panel: #ffffff; --text: #333; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: var(--bg); color: var(--text); margin: 0; display: flex; height: 100vh; overflow: hidden; }
+        
+        .sidebar { width: 380px; background: var(--panel); border-right: 1px solid #ccc; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; box-shadow: 2px 0 10px rgba(0,0,0,0.05); flex-shrink: 0; z-index: 20; }
+        .sidebar h2 { margin-top: 0; font-size: 1.2rem; color: var(--primary); border-bottom: 2px solid var(--primary); padding-bottom: 10px; }
+        .control-group { background: #f9f9f9; padding: 12px; border-radius: 8px; border: 1px solid #eee; }
+        .control-group h3 { font-size: 0.95rem; margin: 0 0 10px 0; text-transform: uppercase; color: #555; font-weight: 700; border-bottom: 1px solid #ddd; padding-bottom: 5px; display: flex; justify-content: space-between; align-items: center; }
+        
+        label { display: block; font-size: 0.85rem; margin-bottom: 5px; color: #444; }
+        .row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+        .col { flex: 1; }
+        input[type="range"] { width: 100%; cursor: pointer; margin: 5px 0; }
+        input[type="text"].mm-input { width: 50px; padding: 4px; text-align: right; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; }
+        input[type="number"] { width: 100%; padding: 4px; border: 1px solid #ccc; border-radius: 4px; }
+        textarea { width: 100%; height: 100px; padding: 8px; border: 1px solid #ccc; font-family: sans-serif; resize: vertical; }
+
+        .expanded-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(255,255,255,0.98); z-index: 5000; padding: 40px; flex-direction: column; }
+        .expanded-overlay.active { display: flex; }
+        .expanded-overlay textarea { flex: 1; font-size: 1.2rem; box-shadow: 0 0 20px rgba(0,0,0,0.1); border: 2px solid var(--primary); padding: 20px; }
+        .close-expand-btn { position: absolute; top: 10px; right: 20px; background: #d9534f; color: white; border: none; padding: 8px 15px; cursor: pointer; border-radius: 4px; font-weight: bold; }
+        .expand-btn { background: transparent; color: var(--primary); border: 1px solid var(--primary); padding: 2px 8px; font-size: 0.8rem; cursor: pointer; border-radius: 4px; }
+
+        .io-buttons { display: flex; gap: 10px; margin-bottom: 15px; }
+        .io-btn { flex: 1; padding: 8px; border: 1px solid #ccc; background: #fff; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.8rem; }
+        .io-btn:hover { background: #f0f0f0; }
+        
+        .sub-group { border-left: 3px solid var(--primary); padding-left: 10px; margin-bottom: 10px; background: #fff; padding: 5px; }
+        .feature-box { background: #fff; border: 1px solid #ddd; padding: 8px; border-radius: 4px; margin-bottom: 8px; }
+        .val-disp { float: right; font-weight: bold; color: var(--primary); font-size: 0.8rem;}
+        
+        /* Стили для таблицы отверстий */
+        .holes-grid { display: grid; grid-template-columns: 30px 1fr 1fr; gap: 5px; align-items: center; margin-top: 5px; }
+        .holes-grid .head { font-size: 0.7rem; font-weight: bold; text-align: center; color: #666; }
+        .hole-row { display: contents; }
+        .hole-idx { font-weight: bold; font-size: 0.8rem; color: var(--primary); text-align: center;}
+
+        .toolbar { width: 104px; background: #f8f9fa; border-right: 1px solid #ccc; display: flex; flex-direction: column; align-items: center; padding: 20px 5px; gap: 12px; z-index: 15; flex-shrink: 0; overflow-y: auto; }
+
+        /* Блок «ручки»: у карандаша и маркера свои цвет и прозрачность */
+        .pen-block { width: 100%; background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 4px 3px; text-align: center; box-sizing: border-box; }
+        .pen-title { font-size: 0.6rem; color: #555; line-height: 1.1; margin-bottom: 2px; white-space: nowrap; }
+        .pen-row { display: flex; align-items: center; justify-content: center; gap: 3px; }
+        .pen-color { width: 34px; height: 22px; border: 1px solid #ccc; border-radius: 3px; padding: 0; cursor: pointer; background: none; }
+        .pen-val { font-size: 0.55rem; font-weight: bold; color: var(--primary); min-width: 20px; text-align: left; }
+        .pen-alpha { width: 80px; height: 14px; margin: 3px 0 0 0; cursor: pointer; }
+        .pen-block.pen-off .pen-color, .pen-block.pen-off .pen-alpha { opacity: 0.35; pointer-events: none; }
+        .pen-block.pen-off .pen-val { color: #aaa; }
+        .pen-auto { font-size: 0.6rem; line-height: 1.1; text-align: center; cursor: pointer; color: #333; user-select: none; }
+        .pen-auto input { margin: 0 2px 0 0; vertical-align: middle; }
+        .tool-btn { width: 45px; height: 45px; border: 1px solid #ccc; background: white; border-radius: 8px; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 1.5rem; transition: all 0.2s; user-select: none; }
+        .tool-btn:hover { background: #eee; }
+        .tool-btn.active { background: var(--primary); color: white; border-color: var(--primary); box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        .divider { width: 80%; height: 1px; background: #ddd; margin: 5px 0; }
+        button.action-btn { background: var(--primary); color: white; border: none; padding: 10px; border-radius: 4px; width: 100%; cursor: pointer; margin-top:5px; font-weight: bold;}
+        .btn-download { background: #28a745; margin-top: 10px; }
+
+        .main-content { flex: 1; padding: 30px; overflow: auto; display: flex; flex-direction: column; align-items: center; background-color: #555; background-image: linear-gradient(45deg, #444 25%, transparent 25%), linear-gradient(-45deg, #444 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #444 75%), linear-gradient(-45deg, transparent 75%, #444 75%); background-size: 20px 20px; }
+        
+        .canvas-wrapper { 
+            box-shadow: 0 0 30px rgba(0,0,0,0.5); 
+            background: white; 
+            margin-bottom: 20px; 
+            border: 1px solid #999; 
+            position: relative; 
+            width: 794px; /* A4 width @96dpi */
+            height: 1123px; /* A4 height @96dpi */
+            flex-shrink: 0;
+        }
+        
+        #previewContainer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; }
+        #previewContainer svg { width: 100%; height: 100%; display: block; }
+        
+        #interactionLayer { 
+            position: absolute; 
+            top: 0; 
+            left: 0; 
+            width: 794px; 
+            height: 1123px; 
+            z-index: 5; 
+            cursor: default; 
+        }
+
+        .pagination-controls { display: flex; gap: 15px; align-items: center; background: white; padding: 10px 20px; border-radius: 30px; box-shadow: 0 5px 15px rgba(0,0,0,0.2); position: sticky; bottom: 20px; z-index: 100; }
+        .pag-btn { width: auto; padding: 8px 15px; margin: 0; border-radius: 20px; cursor: pointer; border: 1px solid #ccc;}
+    </style>
+    <style>
+    /* ---- фоторежим ---- */
+    #photoStatus { font-size: .72rem; color: #666; margin-top: 6px; min-height: 1.2em; line-height: 1.3; }
+    #photoBtn { background: #8e44ad !important; }
+    #photoAllBtn { background: #6c3483 !important; }
+    .pg-photo h3 { color: #8e44ad !important; border-color: #8e44ad !important; }
+    .pg-photo .sub-group { border-left-color: #8e44ad; padding: 7px 9px; }
+    .pg-photo .sub-title { display: block; font-size: .7rem; font-weight: 700; letter-spacing: .05em; color: #8e44ad; margin-bottom: 4px; }
+    .pg-photo .checkbox-label { display: block; font-size: .8rem; margin: 5px 0; }
+    .pg-photo .hint { font-size: .68rem; color: #777; line-height: 1.25; margin-top: 4px; }
+
+    /* ---- ИИ ---- */
+    .ai-group h3 { color: #0b7a6f !important; border-color: #0b7a6f !important; }
+    .ai-group input[type="text"], .ai-group input[type="password"] { width: 100%; padding: 5px; border: 1px solid #ccc; border-radius: 4px; font-size: .82rem; box-sizing: border-box; }
+    .ai-group .sub-group { background: #fff; border: 1px solid #e6e6e6; border-radius: 6px; padding: 7px 9px; margin-bottom: 7px; }
+    .ai-primary { background: #0b7a6f !important; color: #fff !important; border-color: #0b7a6f !important; }
+    .ai-primary:disabled, .io-btn:disabled { opacity: .5; cursor: not-allowed; }
+    #aiStatus { font-size: .75rem; color: #555; margin-top: 8px; min-height: 1.2em; line-height: 1.35; }
+    #aiStatus.err { color: #b03030; }
+    #aiStatus.ok { color: #0b7a6f; }
+    #aiReport { font-size: .72rem; color: #555; line-height: 1.4; }
+    #aiReport table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+    #aiReport td { padding: 1px 3px; border-bottom: 1px dotted #e2e2e2; }
+    #aiReport td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+    #aiResultBox { margin-top: 6px; font-size: .72rem; }
+    #aiResultBox summary { cursor: pointer; color: #0b7a6f; }
+    #aiResultBox pre { max-height: 180px; overflow: auto; background: #f4f4f4; padding: 6px; border-radius: 4px; font-size: .68rem; white-space: pre-wrap; word-break: break-word; }
+</style>
+</head>
+<body>
+
+<div class="expanded-overlay" id="expandedOverlay">
+    <button class="close-expand-btn" id="closeExpandBtn">СВЕРНУТЬ ✖</button>
+    <textarea id="textInputExpanded"></textarea>
+</div>
+
+<div class="sidebar">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h2>Handwriter v16 + ИИ</h2>
+    </div>
+    
+    <div class="io-buttons">
+        <button class="io-btn" id="exportBtn">⬆ Экспорт</button>
+        <button class="io-btn" id="importBtn">⬇ Импорт</button>
+        <input type="file" id="importFile" accept=".json" style="display:none;">
+    </div>
+
+    <!-- Текст -->
+    <div class="control-group">
+        <h3>1. Текст и Цвет <button id="expandTextBtn" class="expand-btn">↕</button></h3>
+        <textarea id="textInput">Привет!
+Это версия 16.0.
+1. Шрифты теперь ЭКСКЛЮЗИВНЫЕ (системные не подмешиваются).
+2. Настройки отверстий точные (в мм).
+3. Перетаскивание обновляет цифры координат.</textarea>
+        <div class="row"><label>Цвет конспекта <input type="color" id="textColor" value="#000044"></label></div>
+    </div>
+
+    <!-- ИИ -->
+    <div class="control-group ai-group">
+        <h3>2. 🤖 ИИ (OpenAI-совместимый API)</h3>
+
+        <label>Базовый URL</label>
+        <input type="text" id="aiBaseUrl" value="https://api.openai.com/v1" placeholder="https://api.openai.com/v1" spellcheck="false">
+        <label style="margin-top:6px">API-ключ</label>
+        <input type="password" id="aiApiKey" placeholder="sk-..." spellcheck="false" autocomplete="off">
+        <label style="margin-top:6px">Модель</label>
+        <input type="text" id="aiModel" value="gpt-4o-mini" placeholder="gpt-4o-mini" spellcheck="false">
+
+        <div class="row" style="margin-top:6px">
+            <div class="col"><label>Температура <span class="val-disp" id="v_aiTemp">0.8</span></label>
+                <input type="range" id="aiTemp" min="0" max="1.5" step="0.1" value="0.8"></div>
+            <div class="col"><label>Макс. токенов</label><input type="number" id="aiMaxTokens" value="4000" min="256" max="16000" step="256"></div>
+        </div>
+        <div class="row">
+            <div class="col"><label>Таймаут, с</label><input type="number" id="aiTimeout" value="90" min="10" max="600" step="5"></div>
+            <div class="col" style="padding-top:16px"><label><input type="checkbox" id="aiJsonMode" checked> JSON-режим</label></div>
+        </div>
+        <div class="row"><label><input type="checkbox" id="aiRemember"> Запомнить ключ в браузере</label></div>
+        <div class="row"><button id="aiCheckBtn" class="io-btn">Проверить связь</button></div>
+
+        <div class="sub-group">
+            <label><input type="checkbox" id="aiErrCheck" checked> Орфография и пунктуация</label>
+            <div class="row"><label>Частота <span class="val-disp" id="v_aiErrRate">1.5</span></label>
+                <input type="range" id="aiErrRate" min="0" max="5" step="0.1" value="1.5"></div>
+        </div>
+        <div class="sub-group">
+            <label><input type="checkbox" id="aiTableCheck" checked> Убрать таблицы (переписать текстом)</label>
+        </div>
+        <div class="sub-group">
+            <label><input type="checkbox" id="aiSemCheck" checked> Смысловые ошибки</label>
+            <div class="row"><label>Частота <span class="val-disp" id="v_aiSemRate">0.8</span></label>
+                <input type="range" id="aiSemRate" min="0" max="3" step="0.1" value="0.8"></div>
+        </div>
+        <div class="sub-group">
+            <label><input type="checkbox" id="aiMarksCheck" checked> Рисование пометок</label>
+            <div class="row"><label>Плотность <span class="val-disp" id="v_aiMarkDensity">40</span>%</label>
+                <input type="range" id="aiMarkDensity" min="0" max="100" step="5" value="40"></div>
+            <div class="row"><label><input type="checkbox" id="aiPenColor"> Свой цвет пометок</label>
+                <input type="color" id="aiMarkColor" value="#c0392b"></div>
+        </div>
+        <div class="sub-group">
+            <label><input type="checkbox" id="aiLayoutCheck" checked> Разбивка и акценты</label>
+            <div class="row"><label>Плотность <span class="val-disp" id="v_aiLayoutDensity">50</span>%</label>
+                <input type="range" id="aiLayoutDensity" min="0" max="100" step="5" value="50"></div>
+        </div>
+
+        <div class="row" style="margin-top:8px">
+            <button id="aiProcessBtn" class="io-btn ai-primary">Обработать ИИ</button>
+            <button id="aiCancelBtn" class="io-btn">Стоп</button>
+        </div>
+        <div class="row">
+            <button id="aiResetBtn" class="io-btn">Сбросить разметку</button>
+            <button id="aiToFieldBtn" class="io-btn">Текст → в поле</button>
+        </div>
+        <div id="aiStatus">ИИ выключен</div>
+        <div id="aiReport"></div>
+        <details id="aiResultBox"><summary>Ответ ИИ (JSON)</summary><pre id="aiResultPre"></pre></details>
+    </div>
+
+    <!-- Шрифты -->
+    <div class="control-group">
+        <h3>3. Шрифты (1-4 шт)</h3>
+        <input type="file" id="fontFile1" accept=".ttf,.otf,.woff" style="margin-bottom:5px">
+        <input type="file" id="fontFile2" accept=".ttf,.otf,.woff" style="margin-bottom:5px">
+        <input type="file" id="fontFile3" accept=".ttf,.otf,.woff" style="margin-bottom:5px">
+        <input type="file" id="fontFile4" accept=".ttf,.otf,.woff">
+    </div>
+
+    <!-- Нажим -->
+    <div class="control-group">
+        <h3>4. Нажим</h3>
+        <label><input type="checkbox" id="pressureCheck" checked> Вариативность</label>
+        <div class="row">
+            <div class="col"><label>Мин: <span id="v_pmin" class="val-disp">0.1</span></label><input type="range" id="pressureMin" min="0" max="2" step="0.1" value="0.1"></div>
+            <div class="col"><label>Макс: <span id="v_pmax" class="val-disp">1.2</span></label><input type="range" id="pressureMax" min="0" max="5" step="0.1" value="1.2"></div>
+        </div>
+        <label style="margin-top:6px;">Плавность нажима <span id="v_psmooth" class="val-disp">70</span>%</label>
+        <input type="range" id="pressureSmooth" min="0" max="100" step="5" value="70">
+        <div style="font-size:.68rem; color:#777; margin-top:3px; line-height:1.3;">Нажим идёт не по буквам, а медленной волной: в начале предложения буквы тоньше и плавно «разгоняются», к концу — плавно затухают. 0 % — резче, 100 % — максимально плавно.</div>
+
+        <label style="margin-top:8px;"><input type="checkbox" id="opacityCheck" checked> Прозрачность (подсохшее перо)</label>
+        <label style="margin-top:6px;">Вариативность прозрачности <span id="v_opacityVar" class="val-disp">35</span>%</label>
+        <input type="range" id="opacityVar" min="0" max="100" step="5" value="35">
+        <div style="font-size:.68rem; color:#777; margin-top:3px; line-height:1.3;">Когда ручка перестаёт писать, буквы чуть бледнеют. Проявляется редко и заметно в основном на тонких буквах — там, где нажим слабый. 0 % — прозрачности нет вообще, 100 % — бледнеют все буквы на странице.</div>
+    </div>
+
+    <!-- Интервалы -->
+    <div class="control-group">
+        <h3>5. Размер</h3>
+        <label>Размер (px) <span id="v_fs" class="val-disp">24</span></label>
+        <input type="range" id="fontSize" min="10" max="100" value="24">
+        <div class="row" style="margin-top:5px"><label>Межстрочный (мм):</label><input type="text" id="lineHeightMm" class="mm-input" value="9,0"></div>
+        <div class="row"><label>Кернинг (px): <span id="v_kern" class="val-disp">0</span></label><input type="range" id="letterSpacing" min="-5" max="10" step="0.5" value="0"></div>
+        <label><input type="checkbox" id="spaceRandomCheck" checked> Случайные пробелы</label>
+        <div class="row">
+            <div class="col"><label>Мин(мм):</label><input type="text" id="spaceMinMm" class="mm-input" value="3,0"></div>
+            <div class="col"><label>Макс(мм):</label><input type="text" id="spaceMaxMm" class="mm-input" value="6,0"></div>
+        </div>
+    </div>
+
+    <!-- Рандомизация -->
+    <div class="control-group">
+        <h3>6. Рандомизация</h3>
+        <div class="sub-group">
+            <span class="sub-title">СТРОКИ</span>
+             <label>Амплитуда (± мм): <span id="v_ljump" class="val-disp">0.5</span></label>
+             <input type="range" id="lineJumpMaxMm" min="0" max="5" step="0.1" value="0.5">
+             <label>Отступ (мм): <span id="v_lind" class="val-disp">5</span></label>
+             <input type="range" id="lineIndentMm" min="0" max="30" value="5">
+             <label>Отступ абзаца: минимум (мм): <span id="v_indentMinMm" class="val-disp">0</span></label>
+             <input type="range" id="indentMinMm" min="0" max="30" step="0.5" value="0">
+             <label>Разброс начала каждой строки (мм): <span id="v_startJitterMm" class="val-disp">3</span></label>
+             <input type="range" id="startJitterMm" min="0" max="15" step="0.5" value="3">
+             <label class="checkbox-label"><input type="checkbox" id="indentSnap"> Отступ абзаца кратен клетке</label>
+             <div style="font-size:.68rem; color:#777; margin-top:3px; line-height:1.3;">Отступ абзаца выбирается случайно между «минимум» и «Отступ». Начало каждой следующей строки тоже сдвигается на случайную величину от 0 до заданной.</div>
+        </div>
+        <div class="sub-group">
+            <span class="sub-title">БУКВЫ</span>
+            <label>Вращение (%): <span id="v_afreq" class="val-disp">100</span></label>
+            <input type="range" id="angleProb" min="0" max="100" value="100">
+            <div class="row">
+                <div class="col"><label>Мин°:</label><input type="number" id="angleMin" value="-5"></div>
+                <div class="col"><label>Макс°:</label><input type="number" id="angleMax" value="5"></div>
+            </div>
+            <label>Сдвиг Y (%): <span id="v_yfreq" class="val-disp">50</span></label>
+            <input type="range" id="yProb" min="0" max="100" value="50">
+             <div class="row">
+                <div class="col"><label>Мин(мм):</label><input type="text" id="yMinMm" class="mm-input" value="-0,5"></div>
+                <div class="col"><label>Макс(мм):</label><input type="text" id="yMaxMm" class="mm-input" value="0,5"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Поля и Отверстия -->
+    <div class="control-group">
+        <h3>7. Поля и Отверстия</h3>
+        <div class="feature-box">
+            <label class="checkbox-label"><input type="checkbox" id="showHolesCheck" checked> Включить отверстия</label>
+            <div style="margin-top:5px; padding-left: 20px; font-size:0.8rem;">
+                <label><input type="checkbox" id="mirrorHolesCheck" checked> Зеркально</label>
+                <label><input type="checkbox" id="printHolesCheck"> Печатать</label>
+            </div>
+            
+            <!-- Новая сетка настроек координат отверстий -->
+            <div class="holes-grid" style="border-top:1px solid #eee; margin-top:8px; padding-top:5px;">
+                <div class="head">№</div>
+                <div class="head">Слева(мм)</div>
+                <div class="head">Сверху(мм)</div>
+
+                <div class="hole-row">
+                    <div class="hole-idx">1</div>
+                    <input type="text" id="hole1x" class="mm-input hole-inp" value="15.0">
+                    <input type="text" id="hole1y" class="mm-input hole-inp" value="30.0">
+                </div>
+                <div class="hole-row">
+                    <div class="hole-idx">2</div>
+                    <input type="text" id="hole2x" class="mm-input hole-inp" value="15.0">
+                    <input type="text" id="hole2y" class="mm-input hole-inp" value="110.0">
+                </div>
+                <div class="hole-row">
+                    <div class="hole-idx">3</div>
+                    <input type="text" id="hole3x" class="mm-input hole-inp" value="15.0">
+                    <input type="text" id="hole3y" class="mm-input hole-inp" value="190.0">
+                </div>
+                <div class="hole-row">
+                    <div class="hole-idx">4</div>
+                    <input type="text" id="hole4x" class="mm-input hole-inp" value="15.0">
+                    <input type="text" id="hole4y" class="mm-input hole-inp" value="270.0">
+                </div>
+            </div>
+        </div>
+        <div class="row-wrap" style="margin-top:10px;">
+            <div class="col"><label>Верх (поля):</label> <input type="text" id="marginTopMm" class="mm-input" value="25,0"></div>
+            <div class="col"><label>Низ (поля):</label> <input type="text" id="marginBottomMm" class="mm-input" value="20,0"></div>
+        </div>
+        <div class="row-wrap">
+            <div class="col"><label>Слева(неч):</label> <input type="text" id="marginLeftMm" class="mm-input" value="25,0"></div>
+            <div class="col"><label>Слева(чет):</label> <input type="text" id="marginLeftEvenMm" class="mm-input" value="25,0"></div>
+        </div>
+        <div class="row"><label>Ширина текста:</label> <input type="text" id="textWidthMm" class="mm-input" value="160,0"></div>
+    </div>
+
+    <!-- Помарки -->
+    <div class="control-group">
+        <h3>8. Помарки</h3>
+        <label>Ошибка в букве (%): <span id="v_merr" class="val-disp">0</span></label>
+        <input type="range" id="mistakeLetterProb" min="0" max="10" step="0.1" value="0">
+        <label>Ошибка в слове (%): <span id="v_werr" class="val-disp">0</span></label>
+        <input type="range" id="mistakeWordProb" min="0" max="10" step="0.1" value="0">
+    </div>
+
+    <!-- Клетка -->
+    <div class="control-group" style="border: 2px solid #ddd;">
+        <h3>9. Клетка (Grid)</h3>
+        <div class="feature-box">
+            <label class="checkbox-label"><input type="checkbox" id="showGridCheck"> Включить клетку</label>
+            <div class="row" style="margin-top:5px;">
+                <div class="col"><label>Ширина(мм):</label><input type="text" id="gridW" class="mm-input" value="5,0"></div>
+                <div class="col"><label>Высота(мм):</label><input type="text" id="gridH" class="mm-input" value="5,0"></div>
+            </div>
+            <div class="row" style="margin-top:5px;">
+                <div class="col"><label>Сдвиг вправо(мм):</label><input type="text" id="gridOffsetXMm" class="mm-input" value="0,0"></div>
+                <div class="col"><label>Сдвиг вниз(мм):</label><input type="text" id="gridOffsetYMm" class="mm-input" value="0,0"></div>
+            </div>
+            <div style="font-size:.68rem; color:#777; margin-top:3px; line-height:1.3;">Сдвиг всей сетки относительно листа (можно отрицательные). Положительное «вниз» поднимает клетки вверх, если задать минус.</div>
+            <label style="margin-top:5px; font-weight:bold; color:var(--primary)"><input type="checkbox" id="printGridCheck"> Печатать</label>
+
+            <div style="border-top:1px solid #eee; margin-top:8px; padding-top:6px;">
+                <label class="checkbox-label"><input type="checkbox" id="cellSnapCheck" checked> Посадка строк в клетку</label>
+                <div class="row" style="margin-top:5px;">
+                    <div class="col"><label>Подъём от линии(мм):</label><input type="text" id="cellLiftMm" class="mm-input" value="0,6"></div>
+                    <div class="col"><label>Клеток на строку:</label><select id="cellsPerRowSel" style="width:100%;padding:3px;">
+                        <option value="auto" selected>Авто</option>
+                        <option value="1">1 клетка</option>
+                        <option value="2">2 клетки</option>
+                        <option value="3">3 клетки</option>
+                        <option value="4">4 клетки</option>
+                    </select></div>
+                </div>
+                <label class="checkbox-label" style="margin-top:5px;"><input type="checkbox" id="cellFitCheck" checked> Подгонять буквы под клетку</label>
+                <div id="cellHint" style="font-size:.68rem; color:#777; margin-top:4px; line-height:1.3;"></div>
+            </div>
+        </div>
+    </div>
+
+    
+    <!-- ===================== ФОТО НА СТОЛЕ ===================== -->
+    <div class="control-group pg-photo" style="border:2px solid #8e44ad;">
+        <h3>10. 📸 Фото на столе</h3>
+
+        <div class="sub-group">
+            <span class="sub-title">ФОН</span>
+            <label>Поверхность стола</label>
+            <select id="deskStyle" style="width:100%;padding:5px;margin-bottom:6px;">
+                <option value="auto" selected>🎲 Авто — один стол на всю сессию</option>
+                <option value="oak">Дерево (дуб)</option>
+                <option value="walnut">Тёмное дерево (орех)</option>
+                <option value="laminate">Серый ламинат</option>
+                <option value="white">Светлый однотонный</option>
+                <option value="custom">Своё фото стола…</option>
+            </select>
+            <input type="file" id="deskPhoto" accept="image/*" style="font-size:.72rem;width:100%;">
+            <div class="hint">Стол, его цвет и текстура не меняются между кадрами. Меняются только свет, тень и положение листа.</div>
+            <label style="margin-top:6px;">Разлиновка листа</label>
+            <select id="ruling" style="width:100%;padding:5px;">
+                <option value="none">Без разлиновки</option>
+                <option value="grid" selected>Клетка 5 мм</option>
+                <option value="lined">Линейка 8 мм</option>
+            </select>
+            <label class="checkbox-label" style="margin-top:6px;">
+                <input type="checkbox" id="underSheet" checked> Лист под низом (тетрадь)
+            </label>
+        </div>
+
+        <div class="sub-group">
+            <span class="sub-title">🎲 СЛУЧАЙНЫЙ КАДР</span>
+            <label class="checkbox-label"><input type="checkbox" id="photoRandom" checked> Случайный кадр (слайдеры = центр разброса)</label>
+            <label>Сила разброса: <span id="v_photoJitter" class="val-disp">0.9</span></label>
+            <input type="range" id="photoJitter" min="0" max="1" step="0.05" value="0.9">
+            <label>Шанс надрыва: <span id="v_photoTear" class="val-disp">0.2</span></label>
+            <input type="range" id="photoTear" min="0" max="1" step="0.05" value="0.2">
+            <label>Шанс смаза / расфокуса: <span id="v_photoBlur" class="val-disp">0.15</span></label>
+            <input type="range" id="photoBlur" min="0" max="1" step="0.05" value="0.15">
+            <label class="checkbox-label"><input type="checkbox" id="photoWindow" checked> Свет из окна (мягкое пятно)</label>
+            <label class="checkbox-label"><input type="checkbox" id="photoSeedLock"> Зафиксировать сцену (отладка)</label>
+            <div class="row">
+                <div class="col"><label>Seed:</label><input type="number" id="photoSeed" min="1" max="4294967295" step="1" value="12345"></div>
+            </div>
+            <div class="hint">Выключи «Случайный кадр» — кадр соберётся точно по слайдерам камеры и света.</div>
+        </div>
+
+        <div class="sub-group">
+            <span class="sub-title">КАМЕРА</span>
+            <label>Наклон (°): <span id="v_photoTilt" class="val-disp">1.2</span></label>
+            <input type="range" id="photoTilt" min="-10" max="10" step="0.1" value="1.2">
+            <label>Перспектива: <span id="v_photoPersp" class="val-disp">0.05</span></label>
+            <input type="range" id="photoPersp" min="0" max="0.25" step="0.01" value="0.05">
+            <label>Размер листа: <span id="v_photoScale" class="val-disp">0.78</span></label>
+            <input type="range" id="photoScale" min="0.5" max="0.95" step="0.01" value="0.78">
+            <div class="row">
+                <div class="col"><label>Сдвиг X:</label><input type="range" id="photoDx" min="-400" max="400" step="5" value="0"></div>
+                <div class="col"><label>Сдвиг Y:</label><input type="range" id="photoDy" min="-500" max="500" step="5" value="0"></div>
+            </div>
+        </div>
+
+        <div class="sub-group">
+            <span class="sub-title">СВЕТ И ПЛЁНКА</span>
+            <label>Тень листа: <span id="v_photoShadow" class="val-disp">0.45</span></label>
+            <input type="range" id="photoShadow" min="0" max="1" step="0.01" value="0.45">
+            <label>Тёплый свет: <span id="v_photoLight" class="val-disp">0.35</span></label>
+            <input type="range" id="photoLight" min="0" max="1" step="0.01" value="0.35">
+            <label>Зерно / шум: <span id="v_photoNoise" class="val-disp">0.4</span></label>
+            <input type="range" id="photoNoise" min="0" max="1" step="0.01" value="0.4">
+            <label>Разрешение</label>
+            <select id="photoRes" style="width:100%;padding:5px;margin-bottom:6px;">
+                <option value="12">12 МП — 3024×4032</option>
+                <option value="8" selected>8 МП — 2448×3264</option>
+                <option value="4">4 МП — 1728×2304 (быстро)</option>
+            </select>
+        </div>
+
+        <button id="photoBtn" class="action-btn">📸 Скачать фото страницы (JPG)</button>
+        <button id="photoAllBtn" class="action-btn" style="background:#6c3483">📸 Все страницы (ZIP)</button>
+        <div id="photoStatus"></div>
+    </div>
+
+    <button id="generateBtn" class="action-btn">ОБНОВИТЬ</button>
+    <label style="margin-top:5px; font-size:0.8rem;"><input type="checkbox" id="autoUpdate" checked> Авто-обновление</label>
+
+    <div style="border-top: 2px solid #ddd; margin-top: 15px; padding-top: 10px;">
+        <button id="downloadCurrentBtn" class="action-btn" style="background:#17a2b8">Скачать ЭТУ страницу (SVG)</button>
+        <button id="downloadAllBtn" class="action-btn btn-download">Скачать ВСЕ (ZIP)</button>
+    </div>
+</div>
+
+<div class="toolbar">
+    <div class="tool-group"><div class="tool-btn" id="tool-pencil">✏️</div><div class="tool-label">Карандаш</div></div>
+    <div class="tool-group"><div class="tool-btn" id="tool-marker">🖍️</div><div class="tool-label">Маркер</div></div>
+    <div class="tool-group"><div class="tool-btn" id="tool-eraser">🧽</div><div class="tool-label">Ластик</div></div>
+    <div class="divider"></div>
+    <div class="pen-block" id="penBlockPencil">
+        <div class="pen-title">✏️ Карандаш</div>
+        <div class="pen-row"><input type="color" id="pencilColor" class="pen-color" value="#000044" title="Цвет карандаша"><span class="pen-val" id="v_pencilAlpha">100%</span></div>
+        <input type="range" id="pencilAlpha" class="pen-alpha" min="5" max="100" step="5" value="100" title="Прозрачность карандаша">
+    </div>
+    <div class="pen-block" id="penBlockMarker">
+        <div class="pen-title">🖍️ Маркер</div>
+        <div class="pen-row"><input type="color" id="markerColor" class="pen-color" value="#000044" title="Цвет маркера"><span class="pen-val" id="v_markerAlpha">50%</span></div>
+        <input type="range" id="markerAlpha" class="pen-alpha" min="5" max="100" step="5" value="50" title="Прозрачность маркера">
+    </div>
+    <label class="pen-auto" title="Рисовать тем же цветом, которым написан конспект"><input type="checkbox" id="usePenColor">Цвет ручки</label>
+    <div class="divider"></div>
+    <div style="width:100%; text-align:center;"><label style="font-size:0.7rem;">Толщина</label><input type="range" id="toolSize" min="1" max="20" value="2" style="width:60px;"></div>
+    <button id="clearDrawingsBtn" style="background:#d9534f; color:white; border:none; border-radius:4px; padding:5px; font-size:0.7rem; margin-top:10px; cursor:pointer;">Очистить<br>стр.</button>
+</div>
+
+<div class="main-content">
+    <div class="canvas-wrapper" id="canvasContainer">
+        <div id="previewContainer"></div>
+        <canvas id="interactionLayer"></canvas>
+    </div>
+    <canvas id="measureCanvas" style="display:none;"></canvas>
+    <div class="pagination-controls">
+        <button class="pag-btn" id="prevPageBtn">←</button>
+        <span class="page-info" id="pageInfo">Стр. 1</span>
+        <button class="pag-btn" id="nextPageBtn">→</button>
+    </div>
+</div>
+
+<script>
+    // --- Constants ---
+    const PPI = 96; 
+    const MM_TO_PX = PPI / 25.4;
+    const PAGE_WIDTH_MM = 210;
+    const PAGE_HEIGHT_MM = 297;
+    const PAGE_WIDTH_PX = 794; 
+    const PAGE_HEIGHT_PX = 1123;
+    const RUSSIAN_CHARS = "абвгдеёжзийклмнопрстуфхцчшщъыьэюя";
+    const DEFAULT_FONT = 'Arial';
+    const HOLE_RADIUS_PX = 3 * MM_TO_PX;
+
+    // --- State ---
+    let generatedSVGs = []; 
+    let pageStrokes = {}; 
+    let currentPageIndex = 0;
+    let loadedFonts = []; 
+    let fontBase64 = {};
+    // Координаты отверстий теперь обновляются из инпутов
+    let holes = [
+        { x: 15 * MM_TO_PX, y: 30 * MM_TO_PX },
+        { x: 15 * MM_TO_PX, y: 110 * MM_TO_PX },
+        { x: 15 * MM_TO_PX, y: 190 * MM_TO_PX },
+        { x: 15 * MM_TO_PX, y: 270 * MM_TO_PX }
+    ];
+    let activeTool = null; 
+    let isDrawing = false;
+    let currentStroke = null;
+    let isDraggingHole = false;
+    let draggedHoleIndex = -1;
+
+    /* --- ИИ: состояние ---
+       applied — показывать ли обработанный текст вместо введённого;
+       text    — обработанный текст от модели;
+       marks   — массив пометок {quote, occurrence, type, note};
+       boxes   — рамки слов, собранные вёрсткой (по страницам). */
+    const aiState = { applied: false, text: null, marks: [], summary: '', resolved: [],
+                      stats: null, marksOn: false, ctrl: null, busy: false, cancelled: false };
+    let aiWordBoxes = {};   // заполняется в generateSVGs, читается в buildFullSVG
+    // Пользователь уже трогал ИИ-блок: только тогда статус можно прокручивать в вид
+    // (иначе загрузка настроек утащила бы сайдбар вниз при открытии страницы).
+    let aiUserActed = false;
+
+    // --- Helpers (Safe Parsing) ---
+    function getVal(id) { const el = document.getElementById(id); return el ? parseFloat(el.value) || 0 : 0; }
+    function getMm(id) { 
+        const el = document.getElementById(id); 
+        if(!el) return 0;
+        let v = el.value; 
+        if(typeof v === 'string') v = v.replace(',', '.');
+        return parseFloat(v) || 0; 
+    }
+    function mmToPx(mm) { return mm * MM_TO_PX; }
+    function pxToMm(px) { return px / MM_TO_PX; }
+    function randomFloat(min, max) { return Math.random() * (max - min) + min; }
+    function getRandomFont() { return loadedFonts.length > 0 ? loadedFonts[Math.floor(Math.random() * loadedFonts.length)] : DEFAULT_FONT; }
+    function escapeHtml(text) { return text ? text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") : ""; }
+    function updateVal(id, val) { const el = document.getElementById('v_' + id); if(el) el.innerText = val; }
+
+    // Функция синхронизации: Инпуты -> Массив отверстий
+    function syncHolesFromInputs() {
+        for(let i=0; i<4; i++) {
+            let xMm = getMm(`hole${i+1}x`);
+            let yMm = getMm(`hole${i+1}y`);
+            holes[i].x = mmToPx(xMm);
+            holes[i].y = mmToPx(yMm);
+        }
+    }
+
+    // --- Text Expansion ---
+    const textInput = document.getElementById('textInput');
+    const textExpanded = document.getElementById('textInputExpanded');
+    const overlay = document.getElementById('expandedOverlay');
+    textInput.addEventListener('input', () => { textExpanded.value = textInput.value; if(document.getElementById('autoUpdate').checked) renderAll(); });
+    textExpanded.addEventListener('input', () => { textInput.value = textExpanded.value; });
+    document.getElementById('expandTextBtn').addEventListener('click', () => { textExpanded.value = textInput.value; overlay.classList.add('active'); });
+    document.getElementById('closeExpandBtn').addEventListener('click', () => { overlay.classList.remove('active'); textInput.value = textExpanded.value; renderAll(); });
+
+    // --- Fonts ---
+    function loadFont(file, index) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const fontName = `HF${index}`;
+            const fontFace = new FontFace(fontName, e.target.result);
+            fontFace.load().then(f => {
+                document.fonts.add(f);
+                if(!loadedFonts.includes(fontName)) loadedFonts.push(fontName);
+                let binary = '';
+                const bytes = new Uint8Array(e.target.result);
+                for (let i=0; i<bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+                fontBase64[fontName] = window.btoa(binary);
+                renderAll();
+            });
+        };
+        reader.readAsArrayBuffer(file);
+    }
+    ['fontFile1','fontFile2','fontFile3','fontFile4'].forEach((id, i) => {
+        document.getElementById(id).addEventListener('change', (e) => { if(e.target.files[0]) loadFont(e.target.files[0], i); });
+    });
+
+    // --- Interaction ---
+    const interactionCanvas = document.getElementById('interactionLayer');
+    const wrapper = document.getElementById('canvasContainer');
+    
+    function initCanvas() {
+        interactionCanvas.width = PAGE_WIDTH_PX;
+        interactionCanvas.height = PAGE_HEIGHT_PX;
+    }
+    initCanvas();
+
+    function getMousePos(evt) {
+        const rect = interactionCanvas.getBoundingClientRect();
+        const scaleX = interactionCanvas.width / rect.width;
+        const scaleY = interactionCanvas.height / rect.height;
+        return { x: (evt.clientX - rect.left) * scaleX, y: (evt.clientY - rect.top) * scaleY };
+    }
+
+    /* ================= ПЛАВНЫЙ ШТРИХ =================
+       Общее ядро для мыши и для пометок ИИ (подчёркивание, обводка,
+       стрелки). Раньше штрих рисовался как ломаная: mousemove даёт точки
+       с шагом до десятков пикселей, и каждое lineTo давало видимый излом.
+       Теперь точки прореживаются и через них проводится кривая Catmull-Rom,
+       у которой стыки гладкие по построению (C1), а не «срезанные». */
+
+    // Прореживание: точки ближе minDist не несут формы, но ломают кривую.
+    function thinPoints(pts, minDist) {
+        if (!pts || pts.length < 2) return (pts || []).slice();
+        const out = [pts[0]];
+        const d2 = minDist * minDist;
+        for (let i = 1; i < pts.length; i++) {
+            const p = pts[i], q = out[out.length - 1];
+            const dx = p.x - q.x, dy = p.y - q.y;
+            if (dx * dx + dy * dy >= d2) out.push(p);
+        }
+        const last = pts[pts.length - 1], tail = out[out.length - 1];
+        if (tail.x !== last.x || tail.y !== last.y) out.push(last);
+        return out;
+    }
+
+    // Неровный шаг точек — вот откуда брались «резкие углы». Мышь шлёт события
+    // то через 1 px (медленно), то через 40 px (рывком). Catmull-Rom считает
+    // касательную по соседям (p2 - p0): рядом с длинным рывком она получается
+    // огромной, контрольные точки улетают за сегмент, кривая разворачивается
+    // назад — и на экране вспыхивает острый угол или петля. Замер на реальных
+    // траекториях: рывки по 40 px давали излом 148°, редкие-частые — 78°.
+    //
+    // Лечится не «ещё большим сглаживанием», а приведением шага к равномерному:
+    //   1) пересэмплирование по длине дуги — точки встают через равные 2.5 px;
+    //   2) скользящее среднее — убирает дрожание руки, не съедая форму;
+    //   3) Catmull-Rom с ограничением длины касательных (не длиннее 1/3 хорды) —
+    //      страховка: кривая физически не может выйти за сегмент.
+    // Концы закрепляем: перо поднимают ровно там, где отпустили кнопку.
+
+    // 1. Равномерная пересадка точек по длине дуги.
+    function resamplePath(pts, step) {
+        if (!pts || pts.length < 2) return (pts || []).slice();
+        step = Math.max(0.5, step || 2.5);
+        const cum = [0];
+        for (let i = 1; i < pts.length; i++) {
+            cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
+        }
+        const total = cum[cum.length - 1];
+        if (total < step) return [{ x: pts[0].x, y: pts[0].y }, { x: pts[pts.length - 1].x, y: pts[pts.length - 1].y }];
+        const n = Math.max(2, Math.round(total / step) + 1);
+        const out = [];
+        let j = 1;
+        for (let i = 0; i < n; i++) {
+            const s = total * i / (n - 1);
+            while (j < cum.length - 1 && cum[j] < s) j++;
+            const a = pts[j - 1], b = pts[j];
+            const seg = (cum[j] - cum[j - 1]) || 1;
+            const u = Math.min(1, Math.max(0, (s - cum[j - 1]) / seg));
+            out.push({ x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u });
+        }
+        out[0] = { x: pts[0].x, y: pts[0].y };
+        out[out.length - 1] = { x: pts[pts.length - 1].x, y: pts[pts.length - 1].y };
+        return out;
+    }
+
+    // 2. Скользящее среднее с треугольным весом. Края окна почти не влияют,
+    // поэтому форма (изгибы, петли) остаётся, а мелкая дрожь исчезает.
+    function lowPassPath(pts, win) {
+        if (!pts || pts.length < 3 || !win || win < 1) return (pts || []).slice();
+        const n = Math.max(1, win | 0), last = pts.length - 1, out = [];
+        for (let i = 0; i <= last; i++) {
+            let sx = 0, sy = 0, cnt = 0;
+            for (let k = -n; k <= n; k++) {
+                const j = i + k;
+                if (j < 0 || j > last) continue;
+                const w = 1 - Math.abs(k) / (n + 1);
+                sx += pts[j].x * w; sy += pts[j].y * w; cnt += w;
+            }
+            out.push({ x: sx / cnt, y: sy / cnt });
+        }
+        out[0] = { x: pts[0].x, y: pts[0].y };
+        out[last] = { x: pts[last].x, y: pts[last].y };
+        return out;
+    }
+
+    // 3. Catmull-Rom -> кубические Безье. Кривая проходит через все опорные
+    // точки, поэтому форма штриха сохраняется, но изломов нет.
+    function smoothPath(pts, tension) {
+        const t = (tension == null) ? 1 : tension;
+        if (!pts || pts.length === 0) return '';
+        const f = v => (Math.round(v * 100) / 100);
+        if (pts.length === 1) return `M ${f(pts[0].x)} ${f(pts[0].y)} l 0.01 0`;
+        if (pts.length === 2) return `M ${f(pts[0].x)} ${f(pts[0].y)} L ${f(pts[1].x)} ${f(pts[1].y)}`;
+        let d = `M ${f(pts[0].x)} ${f(pts[0].y)}`;
+        for (let i = 0; i < pts.length - 1; i++) {
+            const p0 = pts[i - 1] || pts[i];
+            const p1 = pts[i];
+            const p2 = pts[i + 1];
+            const p3 = pts[i + 2] || p2;
+            // Касательная не длиннее трети хорды — иначе кривая выпрыгивает
+            // за сегмент и даёт петлю. Направление при этом не меняется,
+            // так что стык остаётся гладким.
+            const lim = Math.hypot(p2.x - p1.x, p2.y - p1.y) / 3;
+            let c1x = p1.x + (p2.x - p0.x) / 6 * t;
+            let c1y = p1.y + (p2.y - p0.y) / 6 * t;
+            let c2x = p2.x - (p3.x - p1.x) / 6 * t;
+            let c2y = p2.y - (p3.y - p1.y) / 6 * t;
+            const l1 = Math.hypot(c1x - p1.x, c1y - p1.y);
+            if (l1 > lim && l1 > 0) { const k = lim / l1; c1x = p1.x + (c1x - p1.x) * k; c1y = p1.y + (c1y - p1.y) * k; }
+            const l2 = Math.hypot(c2x - p2.x, c2y - p2.y);
+            if (l2 > lim && l2 > 0) { const k = lim / l2; c2x = p2.x + (c2x - p2.x) * k; c2y = p2.y + (c2y - p2.y) * k; }
+            d += ` C ${f(c1x)} ${f(c1y)} ${f(c2x)} ${f(c2y)} ${f(p2.x)} ${f(p2.y)}`;
+        }
+        return d;
+    }
+
+    // Весь конвейер: сырые точки мыши -> гладкий path.
+    // Живое превью и SVG обязаны звать именно это, иначе они разойдутся.
+    function smoothStroke(pts, step, win) {
+        if (!pts || pts.length < 2) return smoothPath(pts, 1);
+        return smoothPath(lowPassPath(resamplePath(pts, step == null ? 2.5 : step), win == null ? 2 : win), 1);
+    }
+
+    // Один источник истины для вида штриха: превью и SVG считают одинаково.
+    // Раньше превью рисовало маркер непрозрачным (а в SVG он 0.5), а ластик —
+    // цветом ручки и обычной толщиной (а в SVG — белым и вчетверо шире):
+    // в момент отпускания кнопки штрих «прыгал».
+    function strokeLook(s) {
+        const er = (s.tool === 'eraser');
+        // Прозрачность/цвет берутся из штриха (заданы в момент нажатия);
+        // для старых штрихов без alpha — прежнее поведение.
+        const alpha = er ? 1 : (typeof s.alpha === 'number' ? s.alpha : ((s.tool === 'marker') ? 0.5 : 1));
+        return {
+            color: er ? '#ffffff' : s.color,
+            width: er ? s.size * 4 : s.size,
+            alpha: alpha
+        };
+    }
+
+    // Настройки «ручки» для конкретного инструмента.
+    // Карандаш и маркер имеют собственные цвет и прозрачность;
+    // чекбокс «Цвет ручки» подменяет цвет цветом конспекта (textColor).
+    function penColorFor(tool) {
+        if (tool === 'eraser') return '#ffffff';
+        const auto = document.getElementById('usePenColor');
+        if (auto && auto.checked) return document.getElementById('textColor').value;
+        const el = document.getElementById(tool === 'marker' ? 'markerColor' : 'pencilColor');
+        return el ? el.value : '#000044';
+    }
+
+    function penAlphaFor(tool) {
+        if (tool === 'eraser') return 1;
+        const el = document.getElementById(tool === 'marker' ? 'markerAlpha' : 'pencilAlpha');
+        const v = el ? parseFloat(el.value) : 100;
+        return Math.max(0.05, Math.min(1, (isNaN(v) ? 100 : v) / 100));
+    }
+
+    function drawLiveStroke() {
+        const ctx = interactionCanvas.getContext('2d');
+        ctx.clearRect(0, 0, PAGE_WIDTH_PX, PAGE_HEIGHT_PX);
+        if (!currentStroke) return;
+        const st = strokeLook(currentStroke);
+        const pts = thinPoints(currentStroke.points, 0.5);
+        if (pts.length === 0) return;
+        ctx.save();
+        ctx.globalAlpha = st.alpha;
+        ctx.strokeStyle = st.color;
+        ctx.fillStyle = st.color;
+        ctx.lineWidth = st.width;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        if (pts.length === 1) {
+            ctx.beginPath();
+            ctx.arc(pts[0].x, pts[0].y, st.width / 2, 0, Math.PI * 2);
+            ctx.fill();
+        } else {
+            ctx.stroke(new Path2D(smoothStroke(pts, 2.5, 2)));
+        }
+        ctx.restore();
+    }
+
+    function endStroke() {
+        if (!isDrawing || !currentStroke) return;
+        isDrawing = false;
+        currentStroke.points = thinPoints(currentStroke.points, 1.2);
+        if (!pageStrokes[currentPageIndex]) pageStrokes[currentPageIndex] = [];
+        pageStrokes[currentPageIndex].push(currentStroke);
+        currentStroke = null;
+        renderAll();
+        const ctx = interactionCanvas.getContext('2d');
+        ctx.clearRect(0, 0, PAGE_WIDTH_PX, PAGE_HEIGHT_PX);
+    }
+
+    interactionCanvas.addEventListener('mousedown', (e) => {
+        const pos = getMousePos(e);
+        if (activeTool) {
+            isDrawing = true;
+            let color = penColorFor(activeTool);
+            let alpha = penAlphaFor(activeTool);
+            let size = getVal('toolSize');
+            currentStroke = { tool: activeTool, color: color, alpha: alpha, size: size, points: [{x: pos.x, y: pos.y}] };
+            drawLiveStroke();
+        } else if (document.getElementById('showHolesCheck').checked) {
+            for (let i = 0; i < holes.length; i++) {
+                const hPos = getHolePosForPage(i, currentPageIndex);
+                if ((pos.x - hPos.x)**2 + (pos.y - hPos.y)**2 < (HOLE_RADIUS_PX * 4)**2) {
+                    isDraggingHole = true; draggedHoleIndex = i; wrapper.style.cursor = 'move'; break;
+                }
+            }
+        }
+    });
+
+    interactionCanvas.addEventListener('mousemove', (e) => {
+        const pos = getMousePos(e);
+        if (isDrawing && activeTool) {
+            const prev = currentStroke.points[currentStroke.points.length - 1];
+            const dx = pos.x - prev.x, dy = pos.y - prev.y;
+            if (dx * dx + dy * dy > 0.25) {
+                currentStroke.points.push(pos);
+                drawLiveStroke();
+            }
+        } else if (isDraggingHole) {
+            const mirror = document.getElementById('mirrorHolesCheck').checked;
+            const isEven = (currentPageIndex % 2 !== 0);
+            
+            // Логика перемещения: обновляем массив holes
+            let baseX = pos.x;
+            if(mirror && isEven) baseX = PAGE_WIDTH_PX - pos.x;
+            holes[draggedHoleIndex].x = baseX; 
+            holes[draggedHoleIndex].y = pos.y;
+
+            // Логика UI: обновляем инпуты в реальном времени
+            const xVal = pxToMm(baseX).toFixed(1);
+            const yVal = pxToMm(pos.y).toFixed(1);
+            document.getElementById(`hole${draggedHoleIndex+1}x`).value = xVal;
+            document.getElementById(`hole${draggedHoleIndex+1}y`).value = yVal;
+
+            renderAll(); 
+        }
+    });
+
+    interactionCanvas.addEventListener('mouseup', () => {
+        endStroke();
+        if(isDraggingHole) { isDraggingHole = false; wrapper.style.cursor = 'default'; renderAll(); }
+    });
+
+    // Кнопку могли отпустить вне холста. Раньше isDrawing оставался true,
+    // и следующий клик продолжал старую линию от чужой точки.
+    window.addEventListener('mouseup', () => { endStroke(); });
+
+    /* ================= ПЕРО: рукописные пометки =================
+       Всё, что рисует ИИ на странице (подчёркивание, обводка слова,
+       стрелка, зачёркивание, маркер), строится одной и той же
+       «шариковой ручкой»: геометрическая опора -> лёгкое дрожание руки ->
+       smoothPath. Дрожание обязательно медленное (волна, а не шум на
+       каждую точку), иначе линия снова станет «пилой». */
+
+    // Медленная волна: амплитуда мала и меняется плавно, поэтому кривая
+    // остаётся гладкой, но перестаёт быть «чертёжной».
+    function penWobble(pts, amp, seed) {
+        if (!amp) return pts.map(p => ({ x: p.x, y: p.y }));
+        const ph = (seed || 0) * 1.7;
+        return pts.map((p, i) => {
+            const t = i / Math.max(1, pts.length - 1);
+            return {
+                x: p.x + Math.sin(t * Math.PI * 2.3 + ph) * amp,
+                y: p.y + Math.sin(t * Math.PI * 3.1 + ph * 1.3) * amp * 0.55
+            };
+        });
+    }
+
+    // Опора для подчёркивания слова: x0..x1 — границы слова, y — линия письма.
+    function penUnderlinePts(x0, x1, y, seed) {
+        const w = Math.max(6, x1 - x0);
+        const n = Math.max(6, Math.round(w / 3));
+        const out = [];
+        for (let i = 0; i <= n; i++) {
+            const t = i / n;
+            // линия чуть «дышит» и слегка провисает к середине, как от руки
+            out.push({ x: x0 + w * t, y: y + Math.sin(t * Math.PI * 2 + (seed % 7)) * 0.5 + Math.sin(t * Math.PI) * 0.7 });
+        }
+        return out;
+    }
+
+    // Опора для обводки слова: замкнутый овал с небольшим перехлёстом в конце
+    // (рука всегда проскакивает точку старта) и расширением к концу обхода.
+    function penCirclePts(x0, x1, topY, botY, seed) {
+        const cx = (x0 + x1) / 2, cy = (topY + botY) / 2;
+        const rx = Math.max(6, (x1 - x0) / 2 + 3);
+        const ry = Math.max(5, (botY - topY) / 2 + 3);
+        const start = -Math.PI * 0.62 + (seed % 5) * 0.05;
+        const turns = 1.12;                       // перехлёст ~12 %
+        const n = 44;
+        const out = [];
+        for (let i = 0; i <= n; i++) {
+            const t = i / n;
+            const a = start + Math.PI * 2 * turns * t;
+            const k = 1 + Math.sin(t * Math.PI) * 0.03;
+            out.push({ x: cx + Math.cos(a) * rx * k, y: cy + Math.sin(a) * ry * k });
+        }
+        return out;
+    }
+
+    // Опора для стрелки: слегка выгнутая дуга (прямая линия выглядит машинной).
+    function penArrowPts(x0, y0, x1, y1, seed) {
+        const dx = x1 - x0, dy = y1 - y0;
+        const L = Math.hypot(dx, dy) || 1;
+        const bow = Math.min(16, L * 0.10) * ((seed % 2) ? 1 : -1);
+        const nx = -dy / L, ny = dx / L;
+        const out = [];
+        const n = 24;
+        for (let i = 0; i <= n; i++) {
+            const t = i / n;
+            const b = Math.sin(t * Math.PI) * bow;
+            out.push({ x: x0 + dx * t + nx * b, y: y0 + dy * t + ny * b });
+        }
+        return out;
+    }
+
+    // Готовый SVG-штрих: дрожание -> прореживание -> гладкая кривая.
+    // Толщина волнится на ±20 %, как нажим живой ручки.
+    function penStroke(pts, color, width, opacity, seed) {
+        const w = Math.max(0.5, width || 1);
+        const p = thinPoints(penWobble(pts, w * 0.22, seed), 0.8);
+        if (p.length === 0) return '';
+        const d = smoothStroke(p, 2.5, 2);
+        const op = (opacity == null) ? 1 : opacity;
+        return `<path d="${d}" fill="none" stroke="${color}" stroke-width="${w.toFixed(2)}" stroke-linecap="round" stroke-linejoin="round" opacity="${op.toFixed(2)}"/>`;
+    }
+
+    // Наконечник стрелки — два коротких штриха от острия назад.
+    function penArrowHead(x1, y1, ang, size, color, width, opacity, seed) {
+        const a1 = ang + Math.PI * 0.84, a2 = ang - Math.PI * 0.84;
+        const out = [];
+        for (const a of [a1, a2]) {
+            out.push(penStroke([{ x: x1 + Math.cos(a) * size, y: y1 + Math.sin(a) * size }, { x: x1, y: y1 }],
+                color, width * 0.9, opacity, seed));
+        }
+        return out.join('');
+    }
+
+    // Для ИИ-слоя и для ручной проверки в консоли.
+    window.__hwPen = { thinPoints, smoothPath, smoothStroke, resamplePath, lowPassPath, penWobble, penUnderlinePts, penCirclePts, penArrowPts, penStroke, penArrowHead };
+    
+    document.getElementById('clearDrawingsBtn').addEventListener('click', () => { if(confirm('Очистить рисунки?')) { pageStrokes[currentPageIndex] = []; renderAll(); } });
+
+    // --- MAIN RENDER LOGIC ---
+    function generateSVGs() {
+        // Сначала синхронизируем данные отверстий (если пользователь ввел цифры руками)
+        if(!isDraggingHole) syncHolesFromInputs();
+
+        generatedSVGs = [];
+        aiWordBoxes = {};          // ИИ: координаты слов для отрисовки пометок
+        opInkReset();   // перо в начале листа полное, дальше высыхает по волне
+        // Если ИИ-разметка применена — верстаем обработанный текст, иначе исходный
+        const text = (aiState.applied && aiState.text != null) ? aiState.text
+                     : (document.getElementById('textInput').value || "");
+        
+        // Params
+        const mainColor = document.getElementById('textColor').value;
+        let fontSize = parseInt(document.getElementById('fontSize').value) || 24;
+        const lineHeight = mmToPx(getMm('lineHeightMm'));
+        const letterSpacing = getVal('letterSpacing');
+        const limitW = mmToPx(getMm('textWidthMm'));
+        
+        const mCtx = document.getElementById('measureCanvas').getContext('2d');
+
+        // Margins
+        const mTop = mmToPx(getMm('marginTopMm'));
+        const mBot = mmToPx(getMm('marginBottomMm'));
+        const mLeft = mmToPx(getMm('marginLeftMm'));
+        const mLeftEven = mmToPx(getMm('marginLeftEvenMm'));
+
+        /* --- Посадка строк в клетку ------------------------------------
+           Человек пишет букву ВНУТРИ клетки, нижним краем у нижней линии.
+           Поэтому: шаг строки = целое число клеток, а базовая линия строки
+           садится на «нижняя линия клетки − подъём», а не в произвольную
+           точку между линиями (как было раньше: 25 + 6.35 + 9n).          */
+        const cellWpx = mmToPx(getMm('gridW'));
+        const cellHpx = mmToPx(getMm('gridH'));
+        const liftPx = mmToPx(getMm('cellLiftMm'));
+        const offXpx = mmToPx(getMm('gridOffsetXMm'));   // сдвиг всей сетки по листу
+        const offYpx = mmToPx(getMm('gridOffsetYMm'));
+        const snapOn = document.getElementById('cellSnapCheck').checked && cellHpx > 2;
+        const indentPx = mmToPx(getMm('lineIndentMm'));
+        const indentMinPx = mmToPx(getMm('indentMinMm'));
+        const indentSnapOn = snapOnFlag();
+        const startJitPx = mmToPx(getMm('startJitterMm'));
+        const lineStartJit = () => randomFloat(0, startJitPx);
+        const paraIndent = () => {
+            const lo = Math.min(indentMinPx, indentPx), hi = Math.max(indentMinPx, indentPx);
+            const v = randomFloat(lo, hi);
+            return (indentSnapOn && cellWpx > 2) ? Math.round(v / cellWpx) * cellWpx : v;
+        };
+        function snapOnFlag() { const el = document.getElementById('indentSnap'); return !!(el && el.checked); }
+        const jumpPx = mmToPx(getMm('lineJumpMaxMm'));
+
+        let cellsPerRow = 1;
+        if (snapOn) {
+            const sel = document.getElementById('cellsPerRowSel');
+            const selV = sel ? sel.value : 'auto';
+            cellsPerRow = (selV === 'auto')
+                ? Math.max(1, Math.round(lineHeight / cellHpx))
+                : Math.max(1, parseInt(selV) || 1);
+            if (document.getElementById('cellFitCheck').checked) {
+                // видимая высота буквы ≈ 0.75em — вписываем её в клетку с запасом 0.8 мм
+                const maxFs = (cellHpx - mmToPx(0.8)) / 0.75;
+                if (fontSize > maxFs) fontSize = Math.max(8, Math.round(maxFs));
+            }
+        }
+        const lineStep = snapOn ? cellsPerRow * cellHpx : lineHeight;
+        // линия сетки, лежащая ниже верхнего поля (с учётом сдвига сетки по листу)
+        const latticeBelow = (y) => offYpx + cellHpx * (Math.floor((y - offYpx) / cellHpx + 1e-9) + 1);
+        const firstBase = snapOn ? (latticeBelow(mTop) - liftPx) : (mTop + fontSize);
+        // пределы «дрожания»: буква не должна уползать из своей клетки
+        const upMax = snapOn ? Math.max(0, cellHpx - fontSize * 0.75) * 0.5 : Infinity;
+        const downMax = snapOn ? liftPx * 0.9 : Infinity; // ниже линии клетки не опускаемся
+        const jLine = (r) => snapOn ? Math.max(-upMax * 0.6, Math.min(downMax * 0.6, r)) : r;
+        const jChar = (r) => snapOn ? Math.max(-upMax * 0.4, Math.min(downMax * 0.4, r)) : r;
+
+        // фоторежим рисует разлиновку по этой же сетке (см. drawRuling)
+        window.__hwLayout = { snap: snapOn, cellW: cellWpx, cellH: cellHpx, step: lineStep,
+                              lift: liftPx, firstBase: firstBase, fs: fontSize, cellsPerRow: cellsPerRow,
+                              offX: offXpx, offY: offYpx };
+
+        let pIdx = 0;
+        let svgContent = [];
+        let curX = mLeft;
+        let curY = firstBase;
+
+        const pushPage = () => { generatedSVGs.push(buildFullSVG(svgContent, pIdx)); pIdx++; svgContent = []; curX = (pIdx%2!==0)? mLeftEven : mLeft; curY = firstBase; };
+
+        // ─── Плавный нажим ───────────────────────────────────────────────────
+        // Раньше толщина выбиралась заново для каждой буквы (randomFloat(pMin,pMax)),
+        // поэтому соседние буквы прыгали «тонкая → жирная → тонкая». Человек так не
+        // пишет: он ведёт нажим плавно. Поэтому уровень нажима — медленная волна,
+        // которая интерполируется между редкими случайными «опорными точками»
+        // (smoothstep: производная на стыках = 0, значит скачков нет вообще),
+        // а поверх неё — разгон в начале предложения и затухание в конце.
+        const pressOn = document.getElementById('pressureCheck').checked;
+        const prMin = getVal('pressureMin'), prMax = getVal('pressureMax');
+        const prMid = prMin + (prMax - prMin) * 0.42;      // средний нажим
+        const prAmp = (prMax - prMin) * 0.42;              // размах медленной волны
+        const prSmooth = Math.min(1, Math.max(0, getVal('pressureSmooth') / 100));
+        const prSegLen = () => Math.round(5 + 20 * prSmooth) + Math.floor(Math.random() * 3); // 5..25 букв на сегмент
+        // Максимальное изменение нажима между соседними буквами — «ограничитель скорости».
+        // Именно он гарантирует, что резкого перепада «тонкая → жирная» не будет.
+        const prStep = prAmp * (0.55 - 0.42 * prSmooth);
+        let prA = randomFloat(-1, 1), prB = randomFloat(-1, 1), prSeg = prSegLen(), prT = 0;
+        let prPrev = null;
+
+        function prNext(mult) {
+            if (!pressOn) return 0;
+            const s = (prT / prSeg); const e = s * s * (3 - 2 * s);   // smoothstep 0..1
+            const lvl = prA + (prB - prA) * e;
+            if (++prT >= prSeg) { prT = 0; prA = prB; prB = randomFloat(-1, 1); prSeg = prSegLen(); }
+            const grain = (Math.random() - 0.5) * prAmp * 0.08;        // микро-дрожь, не «прыжок»
+            let v = (prMid + prAmp * lvl + grain) * (mult == null ? 1 : mult);
+            v = Math.max(prMin, Math.min(prMax, v));
+            if (prPrev != null) v = Math.max(prPrev - prStep, Math.min(prPrev + prStep, v));
+            prPrev = v;
+            return v;
+        }
+
+        // Множители «разгон в начале / затухание в конце» по символам строки (1 = обычный нажим)
+        function prRamps(lineStr) {
+            const n = lineStr.length, f = new Float64Array(n).fill(1);
+            if (!pressOn || n === 0) return f;
+            const ss = (t) => { t = Math.min(1, Math.max(0, t)); return t * t * (3 - 2 * t); };
+            const isEnd = (c) => /[.!?…;:]/.test(c);
+
+            // начало КАЖДОГО предложения: первые буквы тоньше, дальше плавный разгон
+            // (так происходит не всегда — отсюда вариативность)
+            const starts = [0];
+            for (let i = 0; i < n; i++) if (isEnd(lineStr[i])) starts.push(i + 1);
+            for (const s0 of starts) {
+                if (s0 >= n || Math.random() > 0.8) continue;
+                const len = 2 + Math.floor(Math.random() * 4);       // 2..5 букв
+                const depth = randomFloat(0.15, 0.32);
+                let k = 0;
+                for (let i = s0; i < n && k < len; i++) {
+                    if (lineStr[i] === ' ') continue;                // пробел не тратит разгон
+                    f[i] *= 1 - depth * (1 - ss(k / len));
+                    k++;
+                }
+            }
+            // конец предложения: знак препинания — самый тонкий, буквы перед ним плавно тоньше
+            for (let i = 0; i < n; i++) {
+                if (!isEnd(lineStr[i]) || Math.random() > 0.7) continue;
+                const len = 2 + Math.floor(Math.random() * 3);       // 2..4 буквы
+                const depth = randomFloat(0.10, 0.24);
+                f[i] *= 1 - depth;
+                let k = 1;
+                for (let j = i - 1; j >= 0 && k <= len; j--) {
+                    if (lineStr[j] === ' ') break;                   // не тянем через пробел
+                    f[j] *= 1 - depth * (1 - ss(k / (len + 1)));
+                    k++;
+                }
+            }
+            return f;
+        }
+
+        const lines = text.split('\n');
+        for(let l=0; l<lines.length; l++) {
+            let lineStr = lines[l];
+            let lineYOffset = jLine(randomFloat(-jumpPx, jumpPx));
+            // абзацный отступ тоже кратен клеткам, иначе строка начинается «между» столбцов
+            curX += paraIndent();
+
+            if(lineStr === '') { 
+                curY += lineStep; 
+                if(curY > PAGE_HEIGHT_PX - mBot) pushPage();
+                curX = (pIdx%2!==0)? mLeftEven : mLeft;
+                continue; 
+            }
+
+            // слова вместе с их позицией в строке — нужна для множителей нажима
+            const words = []; { const reW = /\S+/g; let mW; while((mW = reW.exec(lineStr)) !== null) words.push({ t: mW[0], at: mW.index }); }
+            const pF = prRamps(lineStr);
+
+            // ─── Планирование строки со сжатием пробелов ───────────────────────
+            // Человек не переносит слово, если оно чуть-чуть не влезает: к концу
+            // строки он сам сжимает слова, причём заметнее всего — в СЕРЕДИНЕ строки
+            // (в начале ещё не знает, что не хватит места, в конце уже не сжать).
+            // Поэтому: набираем в строку максимум слов при минимально допустимом
+            // пробеле, затем «лишнюю» ширину снимаем с пробелов колоколом
+            // (середина сжимается сильнее краёв). Переносов остаётся мало.
+            const planFontStack = (loadedFonts.length > 0) ? "" : `, ${DEFAULT_FONT}`;
+            mCtx.font = `${fontSize}px "${(loadedFonts.length > 0) ? loadedFonts[0] : DEFAULT_FONT}"${planFontStack}`;
+            const wW = words.map(o => mCtx.measureText(o.t).width + o.t.length * (letterSpacing + 1));
+            const spMinPx = mmToPx(getMm('spaceMinMm'));
+            const spMaxPx = mmToPx(getMm('spaceMaxMm'));
+            const spRandom = document.getElementById('spaceRandomCheck').checked;
+            const spFloor = Math.max(1.5, spMinPx * 0.5);   // предел сжатия пробела
+            const naturalGap = () => spRandom ? randomFloat(spMinPx, Math.max(spMinPx, spMaxPx)) : spMinPx;
+            let planEnd = -1;
+            let gapAfter = [];
+            const planLine = (w0, x0, right) => {
+                const avail = right - x0;
+                let end = w0, sumW = wW[w0];
+                while (end + 1 < words.length && sumW + spFloor + wW[end + 1] <= avail) { sumW += spFloor + wW[end + 1]; end++; }
+                gapAfter = [];
+                const k = end - w0;                       // число пробелов внутри строки
+                let natTotal = 0;
+                for (let i = w0; i <= end; i++) { const g = naturalGap(); gapAfter[i] = g; if (i < end) natTotal += g; }
+                let wordsTotal = 0;
+                for (let i = w0; i <= end; i++) wordsTotal += wW[i];
+                let deficit = wordsTotal + natTotal - avail;   // >0 — надо сжимать
+                if (k > 0 && deficit > 0) {
+                    // колокол: края почти не сжимаются, середина — сильнее всего
+                    const wt = [];
+                    for (let i = 0; i < k; i++) wt.push(0.12 + Math.sin(Math.PI * (i + 0.5) / k));
+                    const free = new Array(k).fill(true);
+                    for (let pass = 0; pass < 6 && deficit > 0.01; pass++) {
+                        let sw = 0; for (let i = 0; i < k; i++) if (free[i]) sw += wt[i];
+                        if (sw <= 0) break;
+                        let removed = 0;
+                        for (let i = 0; i < k; i++) {
+                            if (!free[i]) continue;
+                            const want = deficit * wt[i] / sw;
+                            const can = gapAfter[w0 + i] - spFloor;
+                            const cut = Math.min(want, Math.max(0, can));
+                            gapAfter[w0 + i] -= cut; removed += cut;
+                            if (can - cut <= 0.01) free[i] = false;
+                        }
+                        deficit -= removed;
+                    }
+                }
+                planEnd = end;
+            };
+
+            for(let w=0; w<words.length; w++) {
+                const word = words[w].t, wordAt = words[w].at; if(word === '') continue;
+                
+                const buffer = 1;
+                
+                // ИСПРАВЛЕНИЕ: Выбор стека шрифтов для измерения
+                // Если есть пользовательские шрифты, используем только их. Если нет - фаллбэк на Arial.
+                const fallbackStack = (loadedFonts.length > 0) ? "" : `, ${DEFAULT_FONT}`;
+                const testFont = (loadedFonts.length > 0) ? loadedFonts[0] : DEFAULT_FONT;
+                
+                mCtx.font = `${fontSize}px "${testFont}"${fallbackStack}`; 
+                const wWidthApprox = mCtx.measureText(word).width + (word.length * (letterSpacing + buffer));
+                
+                let pageLeft = (pIdx%2!==0)? mLeftEven : mLeft;
+
+                // Строка ещё не спланирована — подбираем слова и сжатие пробелов
+                if (w > planEnd) planLine(w, curX, pageLeft + limitW);
+
+                // Wrap (страховка: срабатывает, только если слово реально не влезло даже со сжатием)
+                if (curX + wWidthApprox > pageLeft + limitW + 0.5) { 
+                    curX = pageLeft; curY += lineStep; 
+                    lineYOffset = jLine(randomFloat(-jumpPx, jumpPx));
+                    if(curY > PAGE_HEIGHT_PX - mBot) pushPage();
+                    pageLeft = (pIdx%2!==0)? mLeftEven : mLeft;
+                    curX = pageLeft + lineStartJit();
+                    planLine(w, curX, pageLeft + limitW);
+                }
+
+                // Holes
+                let nextX = avoidHoles(curX, curY+lineYOffset, wWidthApprox, pIdx, fontSize);
+                if(nextX !== curX) {
+                    curX = nextX;
+                    if(curX + wWidthApprox > pageLeft + limitW) {
+                        curY += lineStep;
+                        lineYOffset = jLine(randomFloat(-jumpPx, jumpPx));
+                        if(curY > PAGE_HEIGHT_PX - mBot) pushPage();
+                        pageLeft = (pIdx%2!==0)? mLeftEven : mLeft;
+                        curX = pageLeft + lineStartJit();
+                        curX = avoidHoles(curX, curY+lineYOffset, wWidthApprox, pIdx, fontSize);
+                    }
+                    // начало строки сдвинулось отверстием — пересчитываем сжатие с новой позиции
+                    planLine(w, curX, pageLeft + limitW);
+                }
+
+                const aiWordX0 = curX;                       // ИИ: левая граница слова
+                const aiWordY = curY + lineYOffset;          // базовая линия слова
+
+                // Mistake Word
+                if (getVal('mistakeWordProb')/100 > 0 && Math.random() < getVal('mistakeWordProb')/100) {
+                    const startX = curX;
+                    for(let c=0; c<word.length; c++) {
+                        const font = getRandomFont();
+                        // Учитываем эксклюзивность шрифтов в замерах
+                        const fb = (loadedFonts.length > 0) ? "" : `, ${DEFAULT_FONT}`;
+                        mCtx.font = `${fontSize}px "${font}"${fb}`;
+                        
+                        const charW = mCtx.measureText(word[c]).width;
+                        svgContent.push(createSVGText(word[c], curX, curY+lineYOffset, mainColor, fontSize, font, 0));
+                        curX += charW + letterSpacing;
+                    }
+                    svgContent.push(createSVGStrike(startX, curY+lineYOffset, curX-startX, fontSize, mainColor));
+                    curX += fontSize*0.4;
+                    let nx = avoidHoles(curX, curY+lineYOffset, 10, pIdx, fontSize); if(nx!==curX) curX=nx;
+                }
+
+                // Letters (Normal Drawing)
+                for(let c=0; c<word.length; c++) {
+                    const char = word[c];
+                    const useP = pressOn;
+                    const pMin = prMin; const pMax = prMax;
+                    // плавный нажим: медленная волна × разгон/затухание предложения
+                    const pW = prNext(pF[wordAt + c]);
+
+                    if(getVal('mistakeLetterProb')/100 > 0 && Math.random() < getVal('mistakeLetterProb')/100) {
+                        const wChar = RUSSIAN_CHARS[Math.floor(Math.random()*RUSSIAN_CHARS.length)] || 'x';
+                        const wFont = getRandomFont();
+                        const fb = (loadedFonts.length > 0) ? "" : `, ${DEFAULT_FONT}`;
+                        mCtx.font = `${fontSize}px "${wFont}"${fb}`;
+                        const wcW = mCtx.measureText(wChar).width;
+                        
+                        svgContent.push(createSVGText(wChar, curX, curY+lineYOffset, mainColor, fontSize, wFont, 0, useP, pMin, pMax, pW));
+                        svgContent.push(`<path d="M ${curX} ${curY+lineYOffset-fontSize*0.3} L ${curX+wcW} ${curY+lineYOffset-fontSize*0.3}" stroke="${mainColor}" stroke-width="1.5" fill="none"/>`);
+                        
+                        const cFont = getRandomFont();
+                        mCtx.font = `${fontSize}px "${cFont}"${fb}`;
+                        const cW = mCtx.measureText(char).width;
+                        
+                        svgContent.push(createSVGText(char, curX + wcW + 2, curY+lineYOffset-fontSize*0.2, mainColor, fontSize, cFont, 0, useP, pMin, pMax, pW * 0.92));
+                        curX += wcW + cW + letterSpacing + buffer + 2;
+                    } else {
+                        const font = getRandomFont();
+                        
+                        // ИСПРАВЛЕНИЕ 1: Strict Fonts Measurement
+                        const fb = (loadedFonts.length > 0) ? "" : `, ${DEFAULT_FONT}`;
+                        mCtx.font = `${fontSize}px "${font}"${fb}`;
+                        
+                        const exactCharWidth = mCtx.measureText(char).width;
+
+                        const rot = (Math.random() < getVal('angleProb')/100) ? randomFloat(getVal('angleMin'), getVal('angleMax')) : 0;
+                        const yS = (Math.random() < getVal('yProb')/100) ? jChar(randomFloat(mmToPx(getMm('yMinMm')), mmToPx(getMm('yMaxMm')))) : 0;
+                        
+                        svgContent.push(createSVGText(char, curX, curY+lineYOffset+yS, mainColor, fontSize, font, rot, useP, pMin, pMax, pW));
+                        
+                        curX += exactCharWidth + letterSpacing;
+                    }
+                }
+
+                // ИИ: запоминаем рамку слова — по ней потом рисуются пометки
+                if (curX > aiWordX0 + 0.5) {
+                    if (!aiWordBoxes[pIdx]) aiWordBoxes[pIdx] = [];
+                    aiWordBoxes[pIdx].push({ t: word, x0: aiWordX0, x1: curX - letterSpacing,
+                                             base: aiWordY, fs: fontSize });
+                }
+
+                // Space
+                // (для слов внутри спланированной строки — пробел со сжатием из planLine)
+                curX += (gapAfter[w] != null) ? gapAfter[w] : naturalGap();
+            }
+            curY += lineStep;
+            if(curY > PAGE_HEIGHT_PX - mBot) pushPage();
+            curX = (pIdx%2!==0)? mLeftEven : mLeft;
+        }
+        
+        // Подсказка о фактической посадке строк
+        const hintEl = document.getElementById('cellHint');
+        if (hintEl) {
+            if (!snapOn) {
+                hintEl.innerText = 'Выкл.: строки идут по «Межстрочный», линии клетки не учитываются.';
+            } else {
+                hintEl.innerText = 'Шаг строки: ' + cellsPerRow + ' кл. = ' + (lineStep / MM_TO_PX).toFixed(1)
+                    + ' мм · буква ≈ ' + (fontSize * 0.75 / MM_TO_PX).toFixed(1)
+                    + ' мм · первая строка на ' + (firstBase / MM_TO_PX).toFixed(1)
+                    + ' мм · нижняя линия ' + ((firstBase + liftPx) / MM_TO_PX).toFixed(1) + ' мм'
+                    + ((offXpx || offYpx) ? ' · сдвиг сетки ' + (offXpx / MM_TO_PX).toFixed(1) + '/' + (offYpx / MM_TO_PX).toFixed(1) + ' мм' : '');
+            }
+        }
+
+        generatedSVGs.push(buildFullSVG(svgContent, pIdx));
+        displayPreview(currentPageIndex);
+    }
+
+    // ─── Прозрачность «подсохшего пера» ─────────────────────────────────
+    // Ручка высыхает НЕ по буквам, а постепенно: буква 1 чуть бледнее, 2 ещё
+    // чуть, 3 ещё — несколько букв подряд, пока перо не «подпитается» и так же
+    // плавно не вернётся к полному нажиму. Поэтому сухость пера — это медленная
+    // волна (smoothstep между случайными узлами + ограничение скорости), а не
+    // случайное число на каждую букву.
+    // Ползунок вариативности: 0 % — прозрачности нет вообще,
+    // 100 % — бледнеют все буквы на странице.
+    let opDrySegLen = 0, opDryT = 0, opDryFrom = 0, opDryTo = 0, opDryNow = 0;
+    let opInkNow = 1;   // фактическая прозрачность предыдущей буквы (для плавности)
+
+    function opInkReset() {
+        opDrySegLen = 0; opDryT = 0; opDryFrom = 0; opDryTo = 0; opDryNow = 0;
+        opInkNow = 1;
+    }
+
+    // Значение «сухости» пера для следующей буквы: 0 — перо полное,
+    // 1 — высохло максимально. Меняется плавно, без скачков.
+    function opDryness() {
+        if (opDrySegLen <= 0 || opDryT >= opDrySegLen) {
+            // новый отрезок письма: иногда начинается высыхание, потом возврат
+            opDrySegLen = 6 + Math.floor(Math.random() * 9);   // 6..14 букв
+            opDryFrom = opDryNow;                              // старт — с текущего уровня
+            opDryT = 0;
+            if (Math.random() < 0.35) opDryTo = randomFloat(0.55, 1.0); // сухое пятно
+            else                      opDryTo = randomFloat(0.0, 0.30); // обычное письмо
+        }
+        const t = opDryT / Math.max(1, opDrySegLen);
+        opDryT++;
+        const s = t * t * (3 - 2 * t);                          // smoothstep
+        let val = opDryFrom + (opDryTo - opDryFrom) * s;
+        // ограничение скорости: перо сохнет постепенно, а не скачком
+        const maxStep = 0.12;
+        val = Math.max(opDryNow - maxStep, Math.min(opDryNow + maxStep, val));
+        opDryNow = val;
+        return val;
+    }
+
+    function inkOpacity(w, pMin, pMax) {
+        const el = document.getElementById('opacityCheck');
+        if (!el || !el.checked) return 1;
+        const v = Math.min(1, Math.max(0, getVal('opacityVar') / 100));
+        if (v <= 0) return 1;
+        // если границы нажима не переданы — берём стандартные
+        if (!isFinite(pMin)) pMin = 0.1;
+        if (!isFinite(pMax)) pMax = 1.2;
+        if (pMax <= pMin) return 1;
+        // thin: 1 — самая тонкая буква, 0 — самая жирная
+        const span = Math.max(1e-6, pMax - pMin);
+        const ww = isFinite(w) ? w : (pMin + pMax) / 2;
+        const thin = Math.max(0, Math.min(1, (pMax - ww) / span));
+        // медленная волна высыхания + совсем небольшая зернистость бумаги
+        const dry = opDryness() * randomFloat(0.98, 1.02);
+        // «сухость» усиливает бледность (и заметно — на тонких буквах). Постоянная
+        // составляющая растёт как v²: на малых значениях ползунка она почти не
+        // видна, а на максимуме бледнеют ВСЕ буквы, даже самые жирные.
+        let target = 1 - (v * v * (0.05 + 0.32 * thin)
+                          + v * (0.10 + 0.30 * (0.35 + 0.65 * thin)) * dry);
+        // страховка: соседние буквы не могут отличаться по прозрачности сильнее
+        // шага — иначе снова получаются «провалы» между буквами
+        const maxJump = 0.015 + 0.05 * v;
+        target = Math.max(opInkNow - maxJump, Math.min(opInkNow + maxJump, target));
+        // пол: буква не должна исчезнуть совсем
+        opInkNow = Math.max(0.35, Math.min(1, target));
+        return opInkNow;
+    }
+
+    // pW — уже посчитанная толщина (плавная волна нажима). Если не передана,
+    // ведём себя как раньше: случайный нажим на каждую букву.
+    function createSVGText(text, x, y, color, size, font, rot, useP, pMin, pMax, pW) {
+        if(isNaN(x) || isNaN(y)) x = 0;
+        let stroke = "";
+        const w = (pW != null && pW > 0) ? pW : randomFloat(pMin, pMax);
+        if(useP) {
+            if(w>0.05) stroke = `stroke="${color}" stroke-width="${w.toFixed(2)}px" stroke-linecap="round" stroke-linejoin="round"`;
+        }
+        // прозрачность: считаем от фактической толщины буквы
+        const op = inkOpacity(useP ? w : null, pMin, pMax);
+        // пишем атрибут только когда бледность реально заметна (>= 2 %)
+        const opAttr = (op < 0.98) ? ` opacity="${op.toFixed(2)}"` : "";
+        
+        // ИСПРАВЛЕНИЕ 2: Strict Fonts SVG Generation
+        // Если загружены кастомные шрифты -> font-family="CustomFontName" (И ВСЁ!)
+        // Если нет -> font-family="Arial, sans-serif"
+        let fontStack = "";
+        if (loadedFonts.length > 0) {
+            fontStack = `"${font}"`; 
+        } else {
+            fontStack = `"${font}", Arial, sans-serif`;
+        }
+
+        return `<text x="0" y="0" fill="${color}" ${stroke}${opAttr} font-family='${fontStack}' font-size="${size}px" transform="translate(${x},${y}) rotate(${rot})">${escapeHtml(text)}</text>`;
+    }
+    
+    function createSVGStrike(x, y, w, size, color) {
+        // Одно непрерывное движение пера: чуть восходящая линия с небольшим
+        // выходом за границы слова. Раньше здесь было три отрезка до x+w со
+        // случайным сдвигом ±2 px — линия шла туда-обратно, на стыках были
+        // видны изломы, а на перекрытиях копилась краска.
+        const y0 = y - size * 0.3;
+        const pad = Math.min(3, w * 0.04);
+        const x0 = x - pad, x1 = x + w + pad;
+        const n = Math.max(4, Math.round((x1 - x0) / 10));
+        const pts = [];
+        for (let i = 0; i <= n; i++) {
+            const t = i / n;
+            pts.push({ x: x0 + (x1 - x0) * t, y: y0 - t * 1.5 + Math.sin(t * Math.PI) * 0.5 });
+        }
+        return `<path d="${smoothPath(pts, 1)}" stroke="${color}" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
+    }
+
+    function avoidHoles(x, y, w, pIdx, fs) {
+        if (!document.getElementById('showHolesCheck').checked) return x;
+        const textBot = y + fs*0.2; const textTop = y - fs;
+        for (let i=0; i<holes.length; i++) {
+            const h = getHolePosForPage(i, pIdx);
+            if (textBot > h.y - HOLE_RADIUS_PX - 8 && textTop < h.y + HOLE_RADIUS_PX + 8) {
+                if (x + w > h.x - HOLE_RADIUS_PX - 8 && x < h.x + HOLE_RADIUS_PX + 8) return h.x + HOLE_RADIUS_PX + 8;
+            }
+        }
+        return x;
+    }
+
+    function getHolePosForPage(i, pIdx) {
+        const base = holes[i];
+        if (document.getElementById('mirrorHolesCheck').checked && (pIdx % 2 !== 0)) return { x: PAGE_WIDTH_PX - base.x, y: base.y };
+        return base;
+    }
+
+    function buildFullSVG(content, pIdx) {
+        let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${PAGE_WIDTH_PX}px" height="${PAGE_HEIGHT_PX}px" viewBox="0 0 ${PAGE_WIDTH_PX} ${PAGE_HEIGHT_PX}">`;
+        svg += `<defs><style>`;
+        for(let f in fontBase64) svg += `@font-face { font-family: "${f}"; src: url(data:font/ttf;base64,${fontBase64[f]}) format('truetype'); } `;
+        svg += `</style></defs>`;
+        
+        // Grid (с учётом сдвига сетки по листу)
+        if(document.getElementById('showGridCheck').checked) {
+            const gw = mmToPx(getMm('gridW'))||50; const gh = mmToPx(getMm('gridH'))||50;
+            const ox = mmToPx(getMm('gridOffsetXMm'))||0; const oy = mmToPx(getMm('gridOffsetYMm'))||0;
+            let g = `<g stroke="#e0e0e0" stroke-width="1">`;
+            for(let x = ox + gw*Math.ceil((0.5-ox)/gw); x<PAGE_WIDTH_PX; x+=gw)
+                g+=`<line x1="${x.toFixed(2)}" y1="0" x2="${x.toFixed(2)}" y2="${PAGE_HEIGHT_PX}"/>`;
+            for(let y = oy + gh*Math.ceil((0.5-oy)/gh); y<PAGE_HEIGHT_PX; y+=gh)
+                g+=`<line x1="0" y1="${y.toFixed(2)}" x2="${PAGE_WIDTH_PX}" y2="${y.toFixed(2)}"/>`;
+            svg += g + `</g>`;
+        }
+        // Holes
+        if(document.getElementById('showHolesCheck').checked) {
+            let hStr = `<g fill="#333">`;
+            holes.forEach((h,i)=> { const p = getHolePosForPage(i, pIdx); hStr+=`<circle cx="${p.x}" cy="${p.y}" r="${HOLE_RADIUS_PX}"/>`; });
+            svg += hStr + `</g>`;
+        }
+        svg += content.join('');
+        // Strokes
+        if(pageStrokes[pIdx]) {
+            let sStr = `<g fill="none" stroke-linecap="round" stroke-linejoin="round">`;
+            pageStrokes[pIdx].forEach(s => {
+                const st = strokeLook(s);
+                const pts = thinPoints(s.points, 0.5);
+                if (pts.length === 0) return;
+                const d = smoothStroke(pts, 2.5, 2);
+                sStr += `<path d="${d}" stroke="${st.color}" stroke-width="${st.width}" opacity="${st.alpha}"/>`;
+            });
+            svg += sStr + `</g>`;
+        }
+        // AI marks (пометки ИИ — тем же пером, что и ручные)
+        const aiMarks = aiMarksSVG(pIdx);
+        if (aiMarks) svg += aiMarks;
+        return svg + `</svg>`;
+    }
+
+    function displayPreview(idx) {
+        if(generatedSVGs.length === 0) return;
+        if(idx>=generatedSVGs.length) idx=generatedSVGs.length-1; if(idx<0) idx=0; currentPageIndex = idx;
+        document.getElementById('pageInfo').innerText = `Стр. ${idx+1} из ${generatedSVGs.length}`;
+        document.getElementById('previewContainer').innerHTML = generatedSVGs[idx];
+    }
+    document.getElementById('prevPageBtn').onclick = () => displayPreview(currentPageIndex-1);
+    document.getElementById('nextPageBtn').onclick = () => displayPreview(currentPageIndex+1);
+
+    function getDownloadSVG(idx) {
+        const doc = new DOMParser().parseFromString(generatedSVGs[idx], "image/svg+xml");
+        if(!document.getElementById('printGridCheck').checked) doc.querySelectorAll('g[stroke="#e0e0e0"]').forEach(g=>g.remove());
+        if(!document.getElementById('printHolesCheck').checked) doc.querySelectorAll('g[fill="#333"]').forEach(g=>g.remove());
+        return new XMLSerializer().serializeToString(doc);
+    }
+    document.getElementById('downloadCurrentBtn').onclick = () => { if(generatedSVGs[currentPageIndex]) saveAs(new Blob([getDownloadSVG(currentPageIndex)], {type:"image/svg+xml;charset=utf-8"}), `page_${currentPageIndex+1}.svg`); };
+    document.getElementById('downloadAllBtn').onclick = () => { if(generatedSVGs.length>0) { const z=new JSZip(); generatedSVGs.forEach((_,i)=>z.file(`${i+1}.svg`, getDownloadSVG(i))); z.generateAsync({type:"blob"}).then(c=>saveAs(c,"handwriting.zip")); } };
+
+    // --- Init & Auto-Update Logic ---
+    
+    // ИСПРАВЛЕНИЕ 3: Собираем ВСЕ инпуты автоматически и вешаем слушатель
+    function attachAutoUpdate() {
+        // Находим все input и select в sidebar
+        const allInputs = document.querySelectorAll('.sidebar input, .sidebar select');
+        allInputs.forEach(el => {
+            // Пропускаем загрузку файлов (у них свой обработчик)
+            if(el.type === 'file') return;
+            
+            // Определяем событие
+            let eventType = (el.type === 'range' || el.type === 'color') ? 'input' : 'change';
+            if(el.type === 'text' || el.type === 'number') eventType = 'input'; // Для текстовых полей лучше input для реал-тайма
+
+            el.addEventListener(eventType, (e) => {
+                // Обновляем визуальные значения слайдеров (v_...)
+                let potentialDispId = 'v_' + el.id;
+                // Маппинг для сложных ID
+                if(el.id==='pressureSmooth') potentialDispId = 'v_psmooth';
+                else if(el.id.startsWith('pressure')) potentialDispId = 'v_' + (el.id.endsWith('Min')?'pmin':'pmax');
+                else if(el.id==='fontSize') potentialDispId = 'v_fs';
+                else if(el.id==='letterSpacing') potentialDispId = 'v_kern';
+                else if(el.id.startsWith('line')) potentialDispId = 'v_' + (el.id.includes('Jump')?'ljump':'lind');
+                else if(el.id==='angleProb') potentialDispId = 'v_afreq';
+                else if(el.id==='yProb') potentialDispId = 'v_yfreq';
+                else if(el.id.startsWith('mistake')) potentialDispId = 'v_' + (el.id.includes('Word')?'werr':'merr');
+                
+                updateVal(potentialDispId.replace('v_', ''), e.target.value);
+
+                // Если это инпуты отверстий - ничего страшного, они обработаются в generateSVGs
+                if(document.getElementById('autoUpdate').checked) renderAll(); 
+            });
+        });
+    }
+
+    ['pencil','marker','eraser'].forEach(t => document.getElementById(`tool-${t}`).addEventListener('click', (e) => { if(activeTool===t) { activeTool=null; e.target.classList.remove('active'); } else { ['pencil','marker','eraser'].forEach(x=>document.getElementById(`tool-${x}`).classList.remove('active')); activeTool=t; e.target.classList.add('active'); } }));
+
+    // --- Ручки: цвет и прозрачность отдельно для карандаша и маркера ---
+    ['pencil', 'marker'].forEach(t => {
+        const alphaEl = document.getElementById(`${t}Alpha`);
+        const valEl = document.getElementById(`v_${t}Alpha`);
+        const sync = () => { if (valEl) valEl.textContent = alphaEl.value + '%'; };
+        alphaEl.addEventListener('input', sync);
+        sync();
+    });
+
+    function syncPenColorUI() {
+        const auto = document.getElementById('usePenColor').checked;
+        document.getElementById('penBlockPencil').classList.toggle('pen-off', auto);
+        document.getElementById('penBlockMarker').classList.toggle('pen-off', auto);
+    }
+    document.getElementById('usePenColor').addEventListener('change', syncPenColorUI);
+    syncPenColorUI();
+    document.getElementById('generateBtn').onclick = () => renderAll();
+    
+    document.getElementById('exportBtn').addEventListener('click', () => { alert('Сохранение настроек в JSON (функция активна)'); });
+    document.getElementById('importBtn').addEventListener('click', () => document.getElementById('importFile').click());
+    
+    /* Вёрстка. Если есть ИИ-пометки — два прохода: первый собирает рамки слов,
+       второй рисует по ним пометки (иначе координат слов ещё нет).
+       Вёрстка «дрожит» от Math.random, поэтому оба прохода идут с одним зерном —
+       иначе пометки съезжают относительно слова на несколько пикселей.
+       Зерно новое на каждый вызов: кнопка «Обновить» по-прежнему даёт новый вариант. */
+    let aiRenderSeed = 1;
+    function aiWithSeed(seed, fn) {
+        const orig = Math.random;
+        let s = (seed >>> 0) || 1;
+        Math.random = () => {
+            s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+            return s / 4294967296;
+        };
+        try { fn(); } finally { Math.random = orig; }
+    }
+
+    function renderAll() {
+        aiState.marksOn = false;
+        aiRenderSeed = (Math.imul(aiRenderSeed, 1664525) + 1013904223) >>> 0;
+        if (!(aiState.marks && aiState.marks.length)) { generateSVGs(); return; }
+        const seed = aiRenderSeed;
+        aiWithSeed(seed, generateSVGs);
+        const res = aiResolveMarks();
+        aiState.resolved = res.list;
+        aiState.stats = res.stats;
+        aiState.marksOn = res.list.length > 0;
+        if (aiState.marksOn) aiWithSeed(seed, generateSVGs);
+    }
+    
+    // Запуск
+    window.onload = () => {
+        attachAutoUpdate(); // Вешаем события на всё
+        renderAll();
+    };
+
+    /* ============================================================================
+       ИИ: запрос к OpenAI-совместимому API, разбор JSON-разметки и отрисовка
+       пометок тем же пером, что и ручные штрихи (__hwPen).
+
+       Схема работы:
+       1. «Обработать ИИ» — текст уходит в /chat/completions, модель возвращает
+          { text, summary, marks:[{quote, occurrence, type, note}] }.
+       2. renderAll() — первый проход вёрстки запоминает рамки слов (aiWordBoxes).
+       3. aiResolveMarks() — цитаты из marks находятся среди слов, плотность
+          отсекает часть пометок (детерминированно, по хэшу).
+       4. Второй проход рисует пометки в buildFullSVG → они попадают и в превью,
+          и в SVG/ZIP-экспорт.
+       ========================================================================== */
+    const AI_LS_KEY = 'handwriter_ai_prefs_v1';
+
+    function aiVal(id) { const el = document.getElementById(id); return el ? el.value : ''; }
+    function aiChk(id) { const el = document.getElementById(id); return !!(el && el.checked); }
+
+    function aiCfg() {
+        return {
+            base: aiVal('aiBaseUrl').trim().replace(/\/+$/, ''),
+            key: aiVal('aiApiKey').trim(),
+            model: aiVal('aiModel').trim() || 'gpt-4o-mini',
+            temp: Math.max(0, Math.min(2, parseFloat(aiVal('aiTemp')) || 0)),
+            maxTokens: Math.max(64, Math.min(32000, parseInt(aiVal('aiMaxTokens'), 10) || 4000)),
+            timeout: Math.max(5, Math.min(600, parseInt(aiVal('aiTimeout'), 10) || 90)) * 1000,
+            jsonMode: aiChk('aiJsonMode'),
+            err: aiChk('aiErrCheck'),
+            errRate: Math.max(0, parseFloat(aiVal('aiErrRate')) || 0),
+            table: aiChk('aiTableCheck'),
+            sem: aiChk('aiSemCheck'),
+            semRate: Math.max(0, parseFloat(aiVal('aiSemRate')) || 0),
+            marks: aiChk('aiMarksCheck'),
+            markDensity: Math.max(0, Math.min(100, parseFloat(aiVal('aiMarkDensity')) || 0)),
+            ownColor: aiChk('aiPenColor'),
+            markColor: aiVal('aiMarkColor') || '#c0392b',
+            layout: aiChk('aiLayoutCheck'),
+            layoutDensity: Math.max(0, Math.min(100, parseFloat(aiVal('aiLayoutDensity')) || 0)),
+            remember: aiChk('aiRemember')
+        };
+    }
+
+    function aiSetStatus(msg, kind) {
+        const el = document.getElementById('aiStatus');
+        if (!el) return;
+        el.textContent = msg || 'ИИ выключен';
+        el.classList.toggle('err', kind === 'err');
+        el.classList.toggle('ok', kind === 'ok');
+        // Сообщение должно быть видно: если человек нажал кнопку у нижнего края
+        // панели, статус иначе окажется за кадром — и клик выглядит как «ничего не произошло».
+        if (msg && aiUserActed) {
+            try { el.scrollIntoView({ block: 'center' }); } catch (e) {}
+        }
+    }
+
+    function aiSetReport(rows) {
+        const box = document.getElementById('aiReport');
+        if (!box) return;
+        if (!rows || !rows.length) { box.innerHTML = ''; return; }
+        box.innerHTML = '<table>' + rows.map(r =>
+            `<tr><td>${escapeHtml(String(r[0]))}</td><td>${escapeHtml(String(r[1]))}</td></tr>`).join('') + '</table>';
+    }
+
+    function aiSetRaw(txt) {
+        const box = document.getElementById('aiResultBox');
+        const pre = document.getElementById('aiResultPre');
+        if (!box || !pre) return;
+        pre.textContent = txt || '';
+        box.style.display = txt ? '' : 'none';
+        if (txt) box.open = false;
+    }
+
+    function aiCancelledError() {
+        const e = new Error('Запрос отменён пользователем.');
+        e.cancelled = true;
+        return e;
+    }
+
+    function aiSetBusy(on) {
+        aiState.busy = on;
+        ['aiProcessBtn', 'aiCheckBtn', 'aiResetBtn', 'aiToFieldBtn'].forEach(id => {
+            const b = document.getElementById(id);
+            if (b) b.disabled = on;
+        });
+        const c = document.getElementById('aiCancelBtn');
+        if (c) c.disabled = !on;
+    }
+
+    // Детерминированный «шум» для плотности: пометка не прыгает при каждом рендере
+    function aiHash(s) {
+        let h = 2166136261;
+        for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+        return h >>> 0;
+    }
+
+    /* ─── Сеть ─────────────────────────────────────────────────────────────── */
+
+    // POST в /chat/completions с таймаутом и отменой.
+    async function aiPost(messages, opts) {
+        const cfg = aiCfg();
+        const o = opts || {};
+        if (!cfg.key) throw new Error('Не задан API-ключ — впишите его в поле «API-ключ».');
+        if (!/^https?:\/\//i.test(cfg.base)) throw new Error('Базовый URL должен начинаться с http:// или https://');
+        const url = /\/chat\/completions$/.test(cfg.base) ? cfg.base : cfg.base + '/chat/completions';
+        const body = {
+            model: cfg.model,
+            messages: messages,
+            temperature: (o.temp != null ? o.temp : cfg.temp),
+            max_tokens: o.maxTokens || cfg.maxTokens
+        };
+        if (o.json !== false && cfg.jsonMode) body.response_format = { type: 'json_object' };
+
+        aiState.cancelled = false;
+        const ctrl = new AbortController();
+        aiState.ctrl = ctrl;
+        const limit = o.timeout || cfg.timeout;
+        const timer = setTimeout(() => { try { ctrl.abort('timeout'); } catch (e) {} }, limit);
+
+        const attempt = async () => {
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + cfg.key },
+                body: JSON.stringify(body),
+                signal: ctrl.signal
+            });
+            const raw = await res.text();
+            if (!res.ok) {
+                let msg = '';
+                try {
+                    const j = JSON.parse(raw);
+                    msg = (j.error && (j.error.message || j.error.type)) || j.message || '';
+                } catch (e) {}
+                const err = new Error('HTTP ' + res.status + (msg ? ': ' + msg : (raw ? ' — ' + raw.slice(0, 300) : '')));
+                err.status = res.status;
+                err.raw = raw;
+                throw err;
+            }
+            let data;
+            try { data = JSON.parse(raw); } catch (e) { throw new Error('Сервер вернул не JSON: ' + raw.slice(0, 200)); }
+            if (data && data.error) throw new Error('Ошибка API: ' + (data.error.message || data.error.type || 'без описания'));
+            const choice = data && data.choices && data.choices[0];
+            return {
+                content: (choice && choice.message && choice.message.content) || '',
+                model: (data && data.model) || cfg.model,
+                usage: (data && data.usage) || null,
+                raw: raw
+            };
+        };
+
+        let out;
+        let jsonFallback = false;
+        const explain = (e) => {
+            if (aiState.cancelled) return aiCancelledError();
+            if (ctrl.signal && ctrl.signal.aborted) {
+                return new Error('Таймаут: сервер не ответил за ' + Math.round(limit / 1000) + ' с. Увеличьте «Таймаут».');
+            }
+            if (e instanceof TypeError || /fetch|network|Failed/i.test(e.message || '')) {
+                return new Error('Сеть недоступна или сервер отклонил соединение. Проверьте URL и интернет.');
+            }
+            return e;
+        };
+        try {
+            out = await attempt();
+        } catch (e) {
+            // Некоторые серверы не умеют response_format — повторяем без JSON-режима
+            const canRetry = !aiState.cancelled && e.status === 400 && body.response_format &&
+                             /response_format|json_object|json mode|unsupported/i.test(e.message || '');
+            if (canRetry) {
+                delete body.response_format;
+                jsonFallback = true;
+                try {
+                    out = await attempt();
+                } catch (e2) {
+                    throw explain(e2);
+                }
+            } else {
+                throw explain(e);
+            }
+        } finally {
+            clearTimeout(timer);
+            if (aiState.ctrl === ctrl) aiState.ctrl = null;
+        }
+
+        if (!out.content) throw new Error('Модель вернула пустой ответ. Проверьте название модели и лимит токенов.');
+        out.jsonFallback = jsonFallback;
+        return out;
+    }
+
+    // Разбор JSON из ответа модели: снимаем ```-обёртку, берём внешний {…}
+    function aiParseJSON(s) {
+        if (!s || !String(s).trim()) throw new Error('Пустой ответ модели.');
+        let t = String(s).trim();
+        t = t.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/,'').trim();
+        const a = t.indexOf('{'), b = t.lastIndexOf('}');
+        if (a < 0 || b <= a) throw new Error('В ответе нет JSON-объекта. Начало: ' + t.slice(0, 200));
+        const body = t.slice(a, b + 1);
+        try {
+            return JSON.parse(body);
+        } catch (e) {
+            throw new Error('JSON не разбирается (' + e.message + '). Начало: ' + body.slice(0, 200));
+        }
+    }
+
+    /* ─── Промпт ───────────────────────────────────────────────────────────── */
+
+    function aiPlural(n, one, few, many) {
+        const a = Math.abs(n) % 100, b = a % 10;
+        if (a > 10 && a < 20) return many;
+        if (b > 1 && b < 5) return few;
+        if (b === 1) return one;
+        return many;
+    }
+
+    function aiBuildPrompt(srcText) {
+        const cfg = aiCfg();
+        const words = (srcText.match(/\S+/g) || []).length;
+        const errCount = cfg.err ? Math.max(1, Math.round(cfg.errRate * words / 100)) : 0;
+        const semCount = cfg.sem ? Math.round(cfg.semRate * words / 200) : 0;
+        const markCand = cfg.marks ? Math.max(2, Math.round(words * 0.12)) : 0;
+        const accentCand = cfg.layout ? Math.max(1, Math.round(words * 0.05)) : 0;
+
+        const rules = [];
+        rules.push('1. Поле "text" — тот же материал, но переписанный для конспекта от руки: живой, чуть более сжатый язык, абзацы через \\n. Никакого markdown, звёздочек, таблиц и html-тегов.');
+
+        if (cfg.table) {
+            rules.push('2. Таблицы и выровненные столбцы (строки с "|", табуляциями, множеством пробелов) перепиши связным текстом или перечислением — так, как это записывают в тетрадь.');
+        } else {
+            rules.push('2. Таблицы оставь как есть, но перепиши их строками вида «Параметр — значение», без символа "|".');
+        }
+
+        if (errCount > 0) {
+            rules.push('3. Орфография и пунктуация: внеси РОВНО ' + errCount + ' ' + aiPlural(errCount, 'ошибку', 'ошибки', 'ошибок') +
+                ' (примерно ' + cfg.errRate + ' на 100 слов). Ошибки должны быть правдоподобными и типичными для ученика: пропуск или замена буквы, ' +
+                'слитное/раздельное написание, лишняя или пропущенная запятая, «не» с глаголом. Смысл фраз должен оставаться понятным. ' +
+                'Не порти имена собственные, числа, формулы и термины.');
+        } else {
+            rules.push('3. Орфографию и пунктуацию не меняй — текст должен быть грамотным.');
+        }
+
+        if (semCount > 0) {
+            rules.push('4. Смысловые неточности: добавь ' + semCount + ' ' + aiPlural(semCount, 'небольшую смысловую ошибку', 'небольшие смысловые ошибки', 'небольших смысловых ошибок') +
+                ' (подмена близкого термина, путаница причины и следствия, неверная дата или число рядом с верным). Не больше одной на абзац, ' +
+                'текст в целом должен оставаться узнаваемым.');
+        } else {
+            rules.push('4. Смысловые ошибки не добавляй.');
+        }
+
+        if (cfg.layout) {
+            rules.push('5. Разбивка: дели длинные абзацы на короткие (1–3 предложения), при необходимости добавь короткие подзаголовки отдельной строкой. ' +
+                'Не меняй порядок изложения. Дополнительно верни ' + accentCand + ' ' + aiPlural(accentCand, 'акцент', 'акцента', 'акцентов') +
+                ' типа "accent" на ключевых словах и терминах (волнистое подчёркивание — «это важно»).');
+        } else {
+            rules.push('5. Разбивку на абзацы и акценты не меняй — сохрани исходную структуру.');
+        }
+
+        if (cfg.marks) {
+            rules.push('6. Пометки проверяющего: верни до ' + markCand + ' ' + aiPlural(markCand, 'объекта', 'объектов', 'объектов') +
+                ' в массиве "marks". Ставь пометки на самое важное и на самые заметные ошибки: "circle" — обвести ошибку или термин, ' +
+                '"underline" — подчеркнуть важную мысль, "strike" — зачеркнуть неверное, "arrow" — указать стрелкой на пояснение. ' +
+                'Плотность пометок в интерфейсе — ' + cfg.markDensity + ' %, поэтому не размечай каждое слово.');
+        } else {
+            rules.push('6. Массив "marks" верни пустым.');
+        }
+
+        rules.push('7. "quote" — ТОЧНАЯ подстрока из поля "text", от 1 до 5 слов, без многоточий и сокращений. "occurrence" — номер вхождения этой подстроки в "text" (1 — первое).');
+        rules.push('8. "summary" — 1–2 предложения по-русски: что изменено и сколько пометок поставлено.');
+
+        const user = [
+            'Обработай текст для рукописного конспекта.',
+            '',
+            'ПРАВИЛА:',
+            rules.join('\n'),
+            '',
+            'ФОРМАТ ОТВЕТА — строго один JSON-объект:',
+            '{"text": "готовый текст", "summary": "что сделано", "marks": [{"quote": "фрагмент из text", "occurrence": 1, "type": "underline", "note": "зачем"}]}',
+            'Допустимые type: underline, circle, strike, arrow, accent.',
+            '',
+            'ТЕКСТ:',
+            '<<<',
+            srcText,
+            '>>>'
+        ].join('\n');
+
+        return [
+            { role: 'system', content: 'Ты — движок разметки приложения Handwriter. Ты готовишь учебный текст для имитации рукописной работы и возвращаешь только JSON-объект без пояснений и без markdown.' },
+            { role: 'user', content: user }
+        ];
+    }
+
+    /* ─── Сопоставление цитат с рамками слов ───────────────────────────────── */
+
+    function aiNormWord(s) {
+        return String(s || '').toLowerCase().replace(/[^0-9a-zа-яё]/gi, '');
+    }
+
+    function aiBoxList() {
+        const out = [];
+        const pages = Object.keys(aiWordBoxes).map(Number).sort((a, b) => a - b);
+        for (let k = 0; k < pages.length; k++) {
+            const p = pages[k], arr = aiWordBoxes[p] || [];
+            for (let i = 0; i < arr.length; i++) out.push({ page: p, box: arr[i] });
+        }
+        return out;
+    }
+
+    function aiUnion(all, i, j) {
+        const first = all[i].box;
+        let x0 = first.x0, x1 = first.x1;
+        for (let k = i + 1; k <= j; k++) {
+            x0 = Math.min(x0, all[k].box.x0);
+            x1 = Math.max(x1, all[k].box.x1);
+        }
+        return { page: all[i].page, x0: x0, x1: x1, base: first.base, fs: first.fs };
+    }
+
+    // Ищем фразу как последовательность слов в одной строке; occurrence — 1-based.
+    function aiFindBox(quote, occurrence) {
+        const q = String(quote || '').trim();
+        if (!q) return null;
+        const tokens = q.split(/\s+/).map(aiNormWord).filter(Boolean);
+        if (!tokens.length) return null;
+        const all = aiBoxList();
+        if (!all.length) return null;
+        const occ = Math.max(1, parseInt(occurrence, 10) || 1);
+        const sameLine = (a, b) => a.page === b.page && Math.abs(a.box.base - b.box.base) < Math.max(2, a.box.fs * 0.5);
+
+        const scan = (seq, need) => {
+            let seen = 0;
+            for (let i = 0; i + seq.length <= all.length; i++) {
+                let ok = true;
+                for (let j = 0; j < seq.length; j++) {
+                    const cur = all[i + j];
+                    if (!cur || aiNormWord(cur.box.t) !== seq[j]) { ok = false; break; }
+                    if (j > 0 && !sameLine(all[i + j - 1], cur)) { ok = false; break; }
+                }
+                if (!ok) continue;
+                seen++;
+                if (seen === need) return aiUnion(all, i, i + seq.length - 1);
+            }
+            return null;
+        };
+
+        let found = scan(tokens, occ);
+        // Запасной путь: модель иногда добавляет знаки препинания или лишние слова
+        if (!found) found = scan(tokens, 1);
+        if (!found && tokens.length > 1) found = scan([tokens[0]], occ) || scan([tokens[0]], 1);
+        return found;
+    }
+
+    // Плотность отсекает часть пометок — по хэшу, чтобы результат не «дрожал».
+    function aiResolveMarks() {
+        const marks = aiState.marks || [];
+        const markDensity = getVal('aiMarkDensity');
+        const layoutDensity = getVal('aiLayoutDensity');
+        const list = [];
+        let lost = 0, skipped = 0;
+        marks.forEach(m => {
+            if (!m || !m.quote) return;
+            const type = String(m.type || 'underline').toLowerCase();
+            const dens = (type === 'accent') ? layoutDensity : markDensity;
+            if (dens <= 0) { skipped++; return; }
+            const h = aiHash(String(m.quote) + '|' + (m.occurrence || 1) + '|' + type);
+            if ((h % 100) >= dens) { skipped++; return; }
+            const box = aiFindBox(m.quote, m.occurrence);
+            if (!box) { lost++; return; }
+            list.push({ mark: m, box: box });
+        });
+        return { list: list, stats: { total: marks.length, found: list.length, lost: lost, skipped: skipped } };
+    }
+
+    /* ─── Отрисовка пометок ────────────────────────────────────────────────── */
+
+    function aiMarksSVG(pIdx) {
+        if (!aiState.marksOn || !aiState.resolved.length) return '';
+        const cfg = aiCfg();
+        const color = cfg.ownColor ? cfg.markColor : '#c0392b';
+        const out = [];
+        let seed = 0;
+        aiState.resolved.forEach(rec => {
+            if (!rec.box || rec.box.page !== pIdx) return;
+            seed++;
+            const svg = aiDrawMark(rec, color, seed, cfg);
+            if (svg) out.push(svg);
+        });
+        if (!out.length) return '';
+        return `<g class="ai-marks" fill="none" stroke-linecap="round" stroke-linejoin="round">${out.join('')}</g>`;
+    }
+
+    function aiDrawMark(rec, color, seed, cfg) {
+        const b = rec.box, m = rec.mark;
+        const fs = b.fs || 24;
+        const type = String(m.type || 'underline').toLowerCase();
+        const w = Math.max(1, fs * 0.058);          // толщина пера ~ 1,4 px при шрифте 24
+        const op = 0.9;
+        const pad = Math.max(1.5, fs * 0.08);
+        const top = b.base - fs * 0.80;
+        const bot = b.base + fs * 0.14;
+        const width = b.x1 - b.x0;
+
+        if (type === 'circle') {
+            const pts = penCirclePts(b.x0 - pad, b.x1 + pad, top - pad, bot + pad, seed);
+            return pts.length ? penStroke(pts, color, w + 0.15, op, seed) : '';
+        }
+
+        if (type === 'strike') {
+            const y = (top + bot) / 2;
+            const pts = [];
+            const n = Math.max(8, Math.round(width / 6));
+            for (let i = 0; i <= n; i++) {
+                const t = i / n;
+                pts.push({ x: b.x0 - pad + (width + pad * 2) * t,
+                           y: y + Math.sin(t * Math.PI * 2 + seed) * Math.max(0.4, fs * 0.02) });
+            }
+            return penStroke(pts, color, w, op, seed);
+        }
+
+        if (type === 'arrow') {
+            const margin = Math.max(22, fs * 1.5);
+            const fromLeft = (b.x0 - margin) > 10;
+            const x0 = fromLeft ? b.x0 - margin : b.x1 + margin;
+            const y0 = top - Math.max(6, fs * 0.5);
+            const ex = fromLeft ? b.x0 - pad : b.x1 + pad;
+            const ey = (top + bot) / 2;
+            const pts = penArrowPts(x0, y0, ex, ey, seed);
+            const ang = Math.atan2(ey - y0, ex - x0);
+            return penStroke(pts, color, w, op, seed) +
+                   penArrowHead(ex, ey, ang, Math.max(5, fs * 0.34), color, w, op, seed);
+        }
+
+        if (type === 'accent') {
+            // волнистое подчёркивание — «это важно»
+            const y = bot + pad;
+            const pts = [];
+            const n = Math.max(10, Math.round(width / 4));
+            const amp = Math.max(0.6, fs * 0.05);
+            for (let i = 0; i <= n; i++) {
+                const t = i / n;
+                pts.push({ x: b.x0 + width * t, y: y + Math.sin(t * Math.PI * 4 + seed) * amp });
+            }
+            return penStroke(pts, color, w, op, seed);
+        }
+
+        // underline (и всё неизвестное)
+        const pts = penUnderlinePts(b.x0 - pad, b.x1 + pad, bot + pad * 1.2, seed);
+        return pts.length ? penStroke(pts, color, w, op, seed) : '';
+    }
+
+    /* ─── Применение результата ────────────────────────────────────────────── */
+
+    function aiApplyResult(parsed, meta) {
+        const m = meta || {};
+        // Реальные модели иногда нарушают схему: text массивом или JSON-строкой
+        let text = parsed && parsed.text;
+        if (Array.isArray(text)) text = text.join('\n');
+        if (typeof text === 'string' && /^\s*[\[{]/.test(text)) {
+            try {
+                const inner = JSON.parse(text);
+                if (inner && typeof inner.text === 'string') {
+                    if (!Array.isArray(parsed.marks) || !parsed.marks.length) parsed = Object.assign({}, parsed, inner);
+                    text = inner.text;
+                }
+            } catch (e) {}
+        }
+        if (typeof text !== 'string' || !text.trim()) {
+            throw new Error('В ответе нет поля "text" с готовым текстом.');
+        }
+        const ALLOWED = { underline: 1, circle: 1, strike: 1, arrow: 1, accent: 1 };
+        const marks = [];
+        let droppedTypes = 0;
+        (Array.isArray(parsed.marks) ? parsed.marks : []).forEach(mk => {
+            if (!mk || typeof mk.quote !== 'string' || !mk.quote.trim()) return;
+            const type = String(mk.type || 'underline').toLowerCase().trim();
+            if (!ALLOWED[type]) droppedTypes++;
+            marks.push({
+                quote: mk.quote.trim(),
+                occurrence: Math.max(1, parseInt(mk.occurrence, 10) || 1),
+                type: ALLOWED[type] ? type : 'underline',
+                note: typeof mk.note === 'string' ? mk.note : ''
+            });
+        });
+        if (droppedTypes) console.warn('ИИ: пометок с неизвестным типом — ' + droppedTypes + ', заменены на подчёркивание');
+
+        aiState.text = text.replace(/\r/g, '').trim();
+        aiState.marks = marks.slice(0, 400);
+        aiState.summary = typeof parsed.summary === 'string' ? parsed.summary : '';
+        aiState.applied = true;
+
+        renderAll();
+
+        const st = aiState.stats || { total: aiState.marks.length, found: 0, lost: 0, skipped: 0 };
+        const words = (aiState.text.match(/\S+/g) || []).length;
+        const rows = [];
+        if (m.model) rows.push(['Модель', m.model]);
+        if (m.jsonFallback) rows.push(['JSON-режим', 'сервер не поддержал — повтор без него']);
+        rows.push(['Слов в тексте', words]);
+        rows.push(['Страниц', generatedSVGs.length]);
+        rows.push(['Пометок от ИИ', st.total]);
+        rows.push(['Нарисовано', st.found]);
+        if (st.lost) rows.push(['Не найдено в тексте', st.lost]);
+        if (st.skipped) rows.push(['Отсечено плотностью', st.skipped]);
+        if (aiState.summary) rows.push(['Итог', aiState.summary]);
+        aiSetReport(rows);
+
+        let msg = 'Готово: пометок ' + st.found + ' из ' + st.total;
+        if (st.found === 0 && st.total > 0) msg += '. Цитаты не совпали с текстом — нажмите «Текст → в поле».';
+        aiSetStatus(msg, st.found > 0 ? 'ok' : '');
+        aiSetRaw(JSON.stringify(parsed, null, 2));
+    }
+
+    /* ─── Обработчики кнопок ───────────────────────────────────────────────── */
+
+    document.getElementById('aiCheckBtn').addEventListener('click', async () => {
+        if (aiState.busy) { aiSetStatus('Уже идёт запрос — дождитесь ответа или нажмите «Стоп».'); return; }
+        const cfg = aiCfg();
+        aiSetBusy(true);
+        aiSetStatus('Проверяю связь с ' + cfg.base + ' …');
+        aiSetReport([]);
+        const t0 = performance.now();
+        try {
+            const r = await aiPost([
+                { role: 'system', content: 'Отвечай одним словом, без пояснений.' },
+                { role: 'user', content: 'Ответь: ок' }
+            ], { json: false, maxTokens: 16, temp: 0, timeout: Math.min(cfg.timeout, 30000) });
+            const ms = Math.round(performance.now() - t0);
+            const usage = r.usage ? ` · токены: ${r.usage.total_tokens || '?'}` : '';
+            aiSetStatus('Связь есть · ' + r.model + ' · ' + ms + ' мс' + usage + ' · ответ: «' + r.content.trim().slice(0, 40) + '»', 'ok');
+            aiSetReport([
+                ['Адрес', cfg.base + '/chat/completions'],
+                ['Модель', r.model],
+                ['Ответ', r.content.trim().slice(0, 80)],
+                ['Задержка', ms + ' мс'],
+                ['Токены', r.usage ? String(r.usage.total_tokens || '—') : '—']
+            ]);
+        } catch (e) {
+            if (e && e.cancelled) { aiSetStatus('Проверка связи отменена.'); aiSetReport([]); }
+            else { aiSetStatus('Ошибка связи: ' + e.message, 'err'); aiSetReport([['Ошибка', e.message]]); }
+        } finally {
+            aiSetBusy(false);
+        }
+    });
+
+    document.getElementById('aiProcessBtn').addEventListener('click', async () => {
+        aiUserActed = true;
+        if (aiState.busy) { aiSetStatus('Уже идёт запрос — дождитесь ответа или нажмите «Стоп».'); return; }
+        const src = (document.getElementById('textInput').value || '').trim();
+        if (!src) { aiSetStatus('Сначала введите текст в поле слева.', 'err'); return; }
+        let text = src;
+        let truncated = false;
+        if (text.length > 14000) { text = text.slice(0, 14000); truncated = true; }
+
+        const cfg = aiCfg();
+        aiSetBusy(true);
+        aiSetStatus('Запрос к модели ' + cfg.model + '… (' + text.length + ' символов' + (truncated ? ', обрезано' : '') + ')');
+        aiSetReport([]);
+        aiSetRaw('');
+        const t0 = performance.now();
+
+        try {
+            const messages = aiBuildPrompt(text);
+            const r = await aiPost(messages, {});
+            const parsed = aiParseJSON(r.content);
+            const ms = Math.round(performance.now() - t0);
+            aiApplyResult(parsed, { model: r.model, ms: ms, jsonFallback: r.jsonFallback });
+            if (truncated) aiSetStatus((document.getElementById('aiStatus').textContent) + ' · текст был обрезан до 14 000 символов', 'ok');
+            const rep = document.getElementById('aiReport');
+            if (rep && rep.querySelector('table')) {
+                rep.querySelector('table').insertAdjacentHTML('beforeend',
+                    `<tr><td>Время</td><td>${ms < 1000 ? ms + ' мс' : (ms / 1000).toFixed(1) + ' с'}</td></tr>`);
+            }
+        } catch (e) {
+            if (e && e.cancelled) {
+                aiSetStatus('Обработка отменена. Осталась разметка прошлого запуска.', '');
+                aiSetReport(aiState.marks.length
+                    ? [['Отменено', 'предыдущая разметка сохранена'], ['Пометок', aiState.marks.length]]
+                    : []);
+            } else {
+                aiSetStatus('Ошибка: ' + e.message, 'err');
+                aiSetReport([['Ошибка', e.message]]);
+            }
+        } finally {
+            aiSetBusy(false);
+        }
+    });
+
+    document.getElementById('aiCancelBtn').addEventListener('click', () => {
+        if (!aiState.ctrl) { aiSetStatus('Нечего отменять — запросов нет.'); return; }
+        aiState.cancelled = true;
+        try { aiState.ctrl.abort(); } catch (e) {}
+        aiSetStatus('Запрос отменён.');
+    });
+
+    document.getElementById('aiResetBtn').addEventListener('click', () => {
+        aiState.applied = false;
+        aiState.text = null;
+        aiState.marks = [];
+        aiState.resolved = [];
+        aiState.stats = null;
+        aiState.marksOn = false;
+        aiState.summary = '';
+        aiSetReport([]);
+        aiSetRaw('');
+        renderAll();
+        aiSetStatus('Разметка сброшена, вернулся исходный текст.');
+    });
+
+    document.getElementById('aiToFieldBtn').addEventListener('click', () => {
+        if (!aiState.text) { aiSetStatus('Нет обработанного текста — сначала нажмите «Обработать ИИ».', 'err'); return; }
+        const t = aiState.text;
+        document.getElementById('textInput').value = t;
+        const exp = document.getElementById('textInputExpanded');
+        if (exp) exp.value = t;
+        // Текст переехал в поле: дальше это обычный исходник, но пометки остаются
+        aiState.applied = false;
+        aiState.text = null;
+        renderAll();
+        const st = aiState.stats || { found: 0, total: aiState.marks.length };
+        aiSetStatus('Текст перенесён в поле ввода. Пометок на месте: ' + st.found + ' из ' + st.total + '.', 'ok');
+    });
+
+    /* ─── Настройки: запоминание ключа и подписи ползунков ─────────────────── */
+
+    function aiSavePrefs() {
+        try {
+            if (!aiChk('aiRemember')) { localStorage.removeItem(AI_LS_KEY); return; }
+            localStorage.setItem(AI_LS_KEY, JSON.stringify({
+                base: aiVal('aiBaseUrl'),
+                model: aiVal('aiModel'),
+                key: aiVal('aiApiKey')
+            }));
+        } catch (e) { /* приватный режим — просто не сохраняем */ }
+    }
+
+    function aiLoadPrefs() {
+        let saved = null;
+        try { saved = JSON.parse(localStorage.getItem(AI_LS_KEY) || 'null'); } catch (e) { saved = null; }
+        if (!saved) return;
+        if (typeof saved.base === 'string') document.getElementById('aiBaseUrl').value = saved.base;
+        if (typeof saved.model === 'string') document.getElementById('aiModel').value = saved.model;
+        if (typeof saved.key === 'string') document.getElementById('aiApiKey').value = saved.key;
+        if (saved.key || saved.base) {
+            const chk = document.getElementById('aiRemember');
+            chk.checked = true;
+            aiSetStatus('Сохранённые настройки ИИ загружены.');
+        }
+    }
+
+    ['aiBaseUrl', 'aiApiKey', 'aiModel'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('change', () => { if (aiChk('aiRemember')) aiSavePrefs(); });
+        el.addEventListener('blur', () => { if (aiChk('aiRemember')) aiSavePrefs(); });
+    });
+    document.getElementById('aiRemember').addEventListener('change', aiSavePrefs);
+
+    // Отладочный доступ (как __hwLayout и __hwPen): удобно тестировать разметку
+    window.__hwAi = {
+        state: aiState,
+        cfg: aiCfg,
+        prompt: aiBuildPrompt,
+        parse: aiParseJSON,
+        resolve: aiResolveMarks,
+        apply: aiApplyResult,
+        boxes: () => aiWordBoxes
+    };
+
+    aiSetRaw('');
+    aiSetStatus('ИИ выключен');
+    aiSetBusy(false);
+    aiLoadPrefs();
+
+    // Помечаем, что человек работает с ИИ-блоком: включает прокрутку статуса в вид
+    const aiGroupEl = document.querySelector('.ai-group');
+    if (aiGroupEl) aiGroupEl.addEventListener('pointerdown', () => { aiUserActed = true; }, true);
+
+/* ============ Handwriter: фоторежим «страница на столе» ============
+   Встраивается в конец основного <script>. Работает с уже готовыми
+   generatedSVGs[], getHolePosForPage(), PAGE_WIDTH_PX, MM_TO_PX и т.д.  */
+(function () {
+    'use strict';
+    var RES = { '12': [3024, 4032], '8': [2448, 3264], '4': [1728, 2304] };
+    var deskImg = null;
+
+    function $(id) { return document.getElementById(id); }
+    function setStatus(t) { var s = $('photoStatus'); if (s) s.textContent = t; }
+    function cnv(w, h) {
+        var c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(w)); c.height = Math.max(1, Math.round(h));
+        return c;
+    }
+    function rnd(a, b) { return a + Math.random() * (b - a); }
+
+    /* ---------------- детерминированный ГПСЧ (mulberry32) ---------------- */
+    function seededRand(seed) {
+        var s = (seed >>> 0) || 1;
+        return function () {
+            s |= 0; s = (s + 0x6D2B79F5) | 0;
+            var t = Math.imul(s ^ (s >>> 15), 1 | s);
+            t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+    }
+    function hashStr(str) {
+        var h = 2166136261 >>> 0;
+        for (var i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+        return h >>> 0;
+    }
+    function rr(R, a, b) { return a + R() * (b - a); }
+    function rpick(R, arr) { return arr[Math.floor(R() * arr.length) % arr.length]; }
+
+    /* ===================================================================
+       СЦЕНА КАДРА.
+       Главное правило: СТОЛ ОДИН И ТОТ ЖЕ. Материал, цвет, рисунок
+       текстуры и её seed фиксированы на всю сессию (deskSeed). Между
+       кадрами меняются только: свет, экспозиция/баланс, тень, положение
+       листа и совсем небольшой сдвиг камеры. Всё — «чуть-чуть».
+       =================================================================== */
+    var DESK_MATERIALS = ['oak', 'walnut', 'laminate', 'white'];
+    var deskSession = {
+        material: null,     // выбранный/угаданный материал стола
+        seed: 0,            // seed текстуры стола — НЕ меняется между кадрами
+        side: 0,            // с какой стороны окно: -1 слева, +1 справа
+        baseAngle: 0        // базовое направление света в этой сессии
+    };
+
+    function ensureDeskSession() {
+        var sel = $('deskStyle');
+        var v = sel ? sel.value : 'oak';
+        if (v === 'auto') {
+            if (!deskSession.material) {
+                // «один стол на сессию»: материал выбирается один раз,
+                // с перекосом в дуб — он чаще всего и фотографируют
+                var t = Math.random(), mat;
+                if (t < 0.60) mat = 'oak';
+                else if (t < 0.85) mat = 'walnut';
+                else if (t < 0.95) mat = 'laminate';
+                else mat = 'white';
+                deskSession.material = mat;
+                // окно и базовое направление света тоже фиксируем на сессию:
+                // «я фотографирую в одно и то же время»
+                deskSession.side = Math.random() < 0.70 ? -1 : 1;
+                deskSession.baseAngle = deskSession.side < 0 ? -2.30 : -0.84;
+            }
+        } else if (v !== 'custom') {
+            deskSession.material = v;
+            if (!deskSession.baseAngle) {
+                deskSession.side = Math.random() < 0.70 ? -1 : 1;
+                deskSession.baseAngle = deskSession.side < 0 ? -2.30 : -0.84;
+            }
+        }
+        if (!deskSession.seed) deskSession.seed = (hashStr('desk:' + deskSession.material) ^ 0x9E3779B9) >>> 0;
+        return deskSession.material || 'oak';
+    }
+
+    function makeScene(baseSeed) {
+        var on = $('photoRandom') ? $('photoRandom').checked : true;
+        var lock = $('photoSeedLock') ? $('photoSeedLock').checked : false;
+        var seedEl = $('photoSeed');
+        var manual = seedEl ? (parseInt(seedEl.value, 10) || 0) : 0;
+        var seed;
+        if (lock && manual) seed = manual >>> 0;
+        else if (!on) seed = manual ? (manual >>> 0) : 1;      // рандом выключен — кадр повторяем
+        else seed = ((baseSeed >>> 0) ^ (manual >>> 0) ^ ((Math.random() * 0xFFFFFFFF) >>> 0)) >>> 0;
+        if (!seed) seed = 1;
+        var R = seededRand(seed);
+
+        var J = on ? Math.max(0, Math.min(1, getVal('photoJitter'))) : 0;
+        var tearP = on ? Math.max(0, Math.min(1, getVal('photoTear'))) : 0;
+        var blurP = on ? Math.max(0, Math.min(1, getVal('photoBlur'))) : 0;
+        var winOn = $('photoWindow') ? $('photoWindow').checked : true;
+
+        /* --- микро-сдвиг камеры: в руках телефон, угол чуть другой --- */
+        var cam = {
+            tilt: rr(R, -1.4, 1.4) * J,
+            persp: rr(R, -0.010, 0.010) * J,
+            scale: rr(R, -0.014, 0.014) * J,
+            dx: rr(R, -9, 9) * J,
+            dy: rr(R, -12, 12) * J
+        };
+
+        // --- свет: направление и тепло «гуляют» только вокруг базового,
+        //     зафиксированного на сессию. Никаких переворотов сцены.
+        var baseA = (typeof deskSession.baseAngle === 'number' && deskSession.baseAngle)
+            ? deskSession.baseAngle : -2.30;
+        var side = deskSession.side || -1;
+        var warm = (0.05 + rr(R, -0.06, 0.09)) * J;
+        var light = {
+            angle: baseA + rr(R, -0.20, 0.20) * J,   // ±11°, и всё
+            strength: 1 + rr(R, -0.13, 0.13) * J,    // сила направленного света
+            warm: warm,                              // сдвиг баланса белого
+            window: winOn,
+            // окно всегда примерно там же, докуда «достаёт» базовый свет
+            winX: side < 0 ? rr(R, 0.02, 0.44) : rr(R, 0.56, 0.95),
+            winY: rr(R, 0.06, 0.50),
+            winW: rr(R, 0.46, 0.78),
+            winA: (0.055 + rr(R, 0, 0.030)) * (0.55 + 0.45 * J),
+            shadow: 1 + rr(R, -0.14, 0.18) * J,
+            /* тень падает дальше от света: свет в -2.30 рад (сверху-слева),
+               значит смещение положительное по X и Y */
+            shadowDx: rr(R, 0.0016, 0.0042) * J,
+            shadowDy: rr(R, 0.0028, 0.0068) * J,
+            exposure: rr(R, -0.014, 0.014) * J,
+            vign: rr(R, -0.04, 0.04) * J
+        };
+
+        // --- бумага: лёгкие заломы и волна края (микро) ---
+        var creases = [];
+        if (J > 0.05) {
+            var n = 1 + Math.floor(R() * 3);
+            for (var i = 0; i < n; i++) {
+                var vert = R() < 0.5;
+                creases.push({
+                    x: rr(R, 0.10, 0.90), y: rr(R, 0.10, 0.90),
+                    vert: vert,
+                    len: rr(R, 0.16, 0.52),
+                    bend: rr(R, -0.035, 0.035),
+                    alpha: rr(R, 0.030, 0.075) * (0.5 + 0.5 * J),
+                    w: rr(R, 1.1, 2.6)
+                });
+            }
+        }
+        var edge = {
+            amp: rr(R, 0.35, 1.0) * J,   // амплитуда волны края (доли от 0.004 стороны)
+            phase: rr(R, 0, Math.PI * 2),
+            freq: rr(R, 1.6, 3.4)
+        };
+
+        // --- редкий надрыв ---
+        var tear = null;
+        if (tearP > 0 && R() < tearP) {
+            var side = Math.floor(R() * 4);
+            tear = {
+                side: side,                                  // 0 top, 1 right, 2 bottom, 3 left
+                pos: rr(R, 0.14, 0.86),
+                w: rr(R, 0.025, 0.060),                      // ширина надрыва (доля стороны)
+                d: rr(R, 0.0018, 0.0075),                    // глубина (доля стороны)
+                jag: rr(R, 0.35, 1.0)
+            };
+        }
+
+        // --- редкий смаз/расфокус ---
+        var blur = { on: false, soft: 0, dx: 0, dy: 0, alpha: 0 };
+        if (blurP > 0 && R() < blurP) {
+            blur.on = true;
+            if (R() < 0.55) {                       // расфокус
+                blur.soft = rr(R, 0.5, 1.15);
+            } else {                                 // лёгкий смаз
+                blur.dx = rr(R, 1.2, 5.0) * (R() < 0.5 ? -1 : 1);
+                blur.dy = rr(R, 0.6, 3.4) * (R() < 0.5 ? -1 : 1);
+                blur.alpha = rr(R, 0.10, 0.22);
+            }
+        }
+
+        /* --- стопка листов под верхним -------------------------------------
+           Физика, а не «дрожание»: листы лежат друг на друге и проколоты
+           вместе. Каждый следующий лист сдвинут и повёрнут относительно
+           предыдущего, но это та же белая бумага в клетку — никаких
+           жёлтых «других сортов» внизу стопки. Шаг маленький, поэтому
+           снаружи читается «несколько листов лежат немного криво,
+           а под ними стол», а не глубокая воронка. */
+        var nUnder = 10 + Math.floor(R() * 7);                   // 10..16 листов
+        var stack = [];
+        var leanA = Math.PI / 2 + rr(R, -0.50, 0.50);            // веер вниз
+        var step0 = rr(R, 0.00045, 0.00090);                     // шаг: доли ширины кадра
+        var tilt0 = rr(R, -0.55, 0.55);
+        var tiltStep = (R() < 0.5 ? -1 : 1) * rr(R, 0.030, 0.075);
+        var acc = 0, accT = tilt0;
+        for (var sl = 0; sl < nUnder; sl++) {
+            var st = step0 * (1 + 0.06 * sl);                    // шаг растёт к низу, мягко
+            var ang = leanA + rr(R, -0.26, 0.26);               // листы лежат не идеально
+            acc += st;
+            if (sl > 0) accT += tiltStep * (0.6 + 0.8 * R());
+            stack.push({
+                dx: Math.cos(ang) * acc,
+                dy: Math.sin(ang) * acc * 1.06,
+                tilt: Math.max(-1.05, Math.min(1.05, accT)),
+                depth: sl + 1,
+                // своя волна края — листы не близнецы
+                edge: { amp: edge.amp * (0.72 - 0.045 * sl), phase: edge.phase + 1.6 + sl * 1.1, freq: edge.freq * (0.82 + 0.045 * sl) }
+            });
+        }
+
+        return {
+            seed: seed, R: R, jitter: J,
+            cam: cam, light: light,
+            creases: creases, edge: edge, tear: tear, blur: blur,
+            stack: stack,
+            desk: ensureDeskSession()
+        };
+    }
+
+    /* ---------------- шум / текстуры ---------------- */
+    function grain(ctx, w, h, amount, R) {
+        if (amount <= 0) return;
+        var rndFn = R || Math.random;
+        var img = ctx.getImageData(0, 0, w, h), d = img.data, i, n;
+        for (i = 0; i < d.length; i += 4) {
+            n = (rndFn() - 0.5) * amount * 16;
+            d[i] += n; d[i + 1] += n; d[i + 2] += n * 0.9;
+        }
+        ctx.putImageData(img, 0, 0);
+    }
+
+    /* лёгкие заломы: тонкие светлые/тёмные линии, почти невидимые */
+    function drawCreases(g, w, h, scene) {
+        if (!scene || !scene.creases || !scene.creases.length) return;
+        g.save();
+        g.lineCap = 'round';
+        for (var i = 0; i < scene.creases.length; i++) {
+            var c = scene.creases[i];
+            var x0 = c.x * w, y0 = c.y * h, L = c.len * (c.vert ? h : w);
+            g.lineWidth = c.w;
+            for (var pass = 0; pass < 2; pass++) {
+                g.strokeStyle = pass ? 'rgba(255,255,255,' + (c.alpha * 0.9).toFixed(3) + ')'
+                                     : 'rgba(120,104,74,' + c.alpha.toFixed(3) + ')';
+                g.beginPath();
+                if (c.vert) {
+                    g.moveTo(x0 + (pass ? 1.1 : 0), y0);
+                    g.bezierCurveTo(
+                        x0 + L * c.bend * 0.4 + (pass ? 1.1 : 0), y0 + L * 0.35,
+                        x0 - L * c.bend * 0.3 + (pass ? 1.1 : 0), y0 + L * 0.7,
+                        x0 + L * c.bend * 0.2 + (pass ? 1.1 : 0), y0 + L);
+                } else {
+                    g.moveTo(x0, y0 + (pass ? 1.1 : 0));
+                    g.bezierCurveTo(
+                        x0 + L * 0.35, y0 + L * c.bend * 0.4 + (pass ? 1.1 : 0),
+                        x0 + L * 0.70, y0 - L * c.bend * 0.3 + (pass ? 1.1 : 0),
+                        x0 + L, y0 + L * c.bend * 0.2 + (pass ? 1.1 : 0));
+                }
+                g.stroke();
+            }
+        }
+        g.restore();
+    }
+
+    /* маленький надрыв на краю листа с волокнами */
+    function drawTear(g, w, h, scene) {
+        var t = scene && scene.tear;
+        if (!t) return;
+        var R = seededRand((scene.seed ^ 0x5A5A5A5A) >>> 0);
+        // строим «рваную» линию по краю
+        var pts = [], i, steps = 9;
+        var side = t.side, along, depth;
+        for (i = 0; i <= steps; i++) {
+            var u = i / steps;
+            var wobble = (R() - 0.5) * t.jag;
+            var deep = Math.sin(u * Math.PI) * (0.55 + 0.45 * R());
+            if (side === 0 || side === 2) {          // верх / низ
+                along = (t.pos - t.w / 2 + t.w * u) * w;
+                depth = deep * t.d * h + wobble * h * 0.0016;
+                pts.push({ x: along, y: side === 0 ? depth : h - depth });
+            } else {                                  // право / лево
+                along = (t.pos - t.w / 2 + t.w * u) * h;
+                depth = deep * t.d * w + wobble * w * 0.0016;
+                pts.push({ x: side === 1 ? w - depth : depth, y: along });
+            }
+        }
+        g.save();
+        // вырезаем
+        g.globalCompositeOperation = 'destination-out';
+        g.beginPath();
+        if (side === 0) {
+            g.moveTo(pts[0].x, 0);
+            for (i = 0; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y);
+            g.lineTo(pts[pts.length - 1].x, 0);
+        } else if (side === 2) {
+            g.moveTo(pts[0].x, h);
+            for (i = 0; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y);
+            g.lineTo(pts[pts.length - 1].x, h);
+        } else if (side === 1) {
+            g.moveTo(w, pts[0].y);
+            for (i = 0; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y);
+            g.lineTo(w, pts[pts.length - 1].y);
+        } else {
+            g.moveTo(0, pts[0].y);
+            for (i = 0; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y);
+            g.lineTo(0, pts[pts.length - 1].y);
+        }
+        g.closePath(); g.fill();
+        g.globalCompositeOperation = 'source-over';
+
+        // волокна по кромке разрыва
+        g.lineWidth = Math.max(0.7, w * 0.0006);
+        for (i = 0; i < 14; i++) {
+            var p = pts[Math.floor(R() * pts.length)];
+            var len = (0.004 + R() * 0.012) * (side === 0 || side === 2 ? h : w);
+            var dirIn = (side === 0) ? 1 : (side === 2) ? -1 : (side === 1) ? -1 : 1;
+            g.strokeStyle = R() < 0.5 ? 'rgba(255,253,244,0.55)' : 'rgba(150,136,110,0.40)';
+            g.beginPath();
+            g.moveTo(p.x, p.y);
+            if (side === 0 || side === 2) g.lineTo(p.x + (R() - 0.5) * len * 0.5, p.y + dirIn * len * (0.35 + R()));
+            else g.lineTo(p.x + dirIn * len * (0.35 + R()), p.y + (R() - 0.5) * len * 0.5);
+            g.stroke();
+        }
+        // мягкое затемнение под надрывом
+        g.globalCompositeOperation = 'multiply';
+        var bb = { x0: 1e9, y0: 1e9, x1: -1e9, y1: -1e9 };
+        for (i = 0; i < pts.length; i++) {
+            bb.x0 = Math.min(bb.x0, pts[i].x); bb.x1 = Math.max(bb.x1, pts[i].x);
+            bb.y0 = Math.min(bb.y0, pts[i].y); bb.y1 = Math.max(bb.y1, pts[i].y);
+        }
+        var gr = g.createRadialGradient((bb.x0 + bb.x1) / 2, (bb.y0 + bb.y1) / 2, 0,
+                                        (bb.x0 + bb.x1) / 2, (bb.y0 + bb.y1) / 2,
+                                        Math.max(bb.x1 - bb.x0, bb.y1 - bb.y0) * 0.85 + 1);
+        gr.addColorStop(0, 'rgba(120,105,80,0.22)');
+        gr.addColorStop(1, 'rgba(120,105,80,0)');
+        g.fillStyle = gr;
+        g.fillRect(bb.x0 - 4, bb.y0 - 4, (bb.x1 - bb.x0) + 8, (bb.y1 - bb.y0) + 8);
+        g.restore();
+    }
+
+    function paperFill(w, h, scene) {
+        var c = cnv(w, h), g = c.getContext('2d', { willReadFrequently: true });
+        // без сцены (лист «под низом») — обычный random; со сценой — детерминированно
+        var R = (scene && scene.seed) ? seededRand((scene.seed ^ 0x0BEEF) >>> 0) : Math.random;
+        g.fillStyle = '#fbf9f1';
+        g.fillRect(0, 0, w, h);
+        var img = g.getImageData(0, 0, w, h), d = img.data, i, n;
+        for (i = 0; i < d.length; i += 4) {
+            n = (R() - 0.5) * 9;
+            d[i] += n; d[i + 1] += n; d[i + 2] += n * 1.1;
+        }
+        g.putImageData(img, 0, 0);
+        // редкие волокна
+        g.globalAlpha = 0.05;
+        for (i = 0; i < Math.round(w * h / 9000); i++) {
+            var x = R() * w, y = R() * h, L = 4 + R() * (w * 0.06 - 4);
+            g.strokeStyle = R() < 0.5 ? '#8a7f66' : '#ffffff';
+            g.lineWidth = 0.6 + R() * 1.2;
+            g.beginPath(); g.moveTo(x, y);
+            g.bezierCurveTo(x + L * 0.3, y + (R() - 0.5) * 4, x + L * 0.6, y + (R() - 0.5) * 4, x + L, y + (R() - 0.5) * 2);
+            g.stroke();
+        }
+        g.globalAlpha = 1;
+        // заломы (едва заметные)
+        drawCreases(g, w, h, scene);
+        // затемнение к краям (толщина/изгиб)
+        var rg = g.createRadialGradient(w * 0.45, h * 0.4, Math.min(w, h) * 0.35, w * 0.5, h * 0.5, Math.max(w, h) * 0.72);
+        rg.addColorStop(0, 'rgba(0,0,0,0)');
+        rg.addColorStop(1, 'rgba(120,105,80,0.10)');
+        g.fillStyle = rg; g.fillRect(0, 0, w, h);
+        // редкий надрыв
+        drawTear(g, w, h, scene);
+        return c;
+    }
+
+    /* свет на столе: направление/тепло/окно — единственное, что «гуляет»
+       между кадрами. Рисунок стола при этом не сдвигается ни на пиксель. */
+    function applyDeskLight(g, w, h, scene) {
+        var L = scene.light;
+        var a = (typeof L.angle === 'number') ? L.angle : -2.30;   // свет сверху-слева/справа
+        var cx = w * 0.5, cy = h * 0.5;
+        var rad = Math.sqrt(w * w + h * h) * 0.62;
+        var lx = cx + Math.cos(a) * rad, ly = cy + Math.sin(a) * rad;
+        var warm = Math.max(0, L.warm), cool = Math.max(0, -L.warm);
+        var s = Math.max(0.35, L.strength);
+        var lg = g.createLinearGradient(lx, ly, 2 * cx - lx, 2 * cy - ly);
+        var r0 = Math.round(255 - 22 * cool), g0 = Math.round(243 - 10 * cool), b0 = Math.round(212 + 30 * cool);
+        lg.addColorStop(0, 'rgba(' + r0 + ',' + g0 + ',' + b0 + ',' + (0.20 * s).toFixed(3) + ')');
+        lg.addColorStop(0.50, 'rgba(0,0,0,0)');
+        lg.addColorStop(1, 'rgba(0,0,0,' + (0.26 * s).toFixed(3) + ')');
+        g.fillStyle = lg; g.fillRect(0, 0, w, h);
+
+        if (L.window) {
+            var wx = L.winX * w, wy = L.winY * h;
+            var wr = L.winW * Math.min(w, h) * 0.5;
+            var wc = (warm > 0.02 || L.warm > 0) ? '255,236,196' : '234,242,255';
+            g.save();
+            g.globalCompositeOperation = 'lighter';
+            g.translate(wx, wy);
+            g.rotate(-0.38 + L.angle * 0.45);
+            g.scale(1, 0.60);
+            var rg = g.createRadialGradient(0, 0, 0, 0, 0, Math.max(1, wr));
+            rg.addColorStop(0, 'rgba(' + wc + ',' + L.winA.toFixed(3) + ')');
+            rg.addColorStop(0.45, 'rgba(' + wc + ',' + (L.winA * 0.55).toFixed(3) + ')');
+            rg.addColorStop(1, 'rgba(' + wc + ',0)');
+            g.fillStyle = rg;
+            g.beginPath(); g.arc(0, 0, Math.max(1, wr), 0, Math.PI * 2); g.fill();
+            g.restore();
+        }
+    }
+
+    function paintDesk(g, w, h, scene) {
+        var variant = (scene && scene.desk) || 'oak';
+        var palette = {
+            oak: ['#8b6540', '#6f4d2f', '#a67d50'],
+            walnut: ['#4b3325', '#2f2018', '#6d4c35'],
+            laminate: ['#9aa1a7', '#7f868d', '#bcc1c6'],
+            white: ['#e9e7e2', '#d7d4ce', '#f8f6f1']
+        }[variant] || ['#8b6540', '#6f4d2f', '#a67d50'];
+
+        // ВАЖНО: seed узора стола постоянный. Именно поэтому между
+        // фотографиями не «пересыпается» текстура и не меняется стол.
+        if (!deskSession.seed) ensureDeskSession();
+        var R = seededRand(deskSession.seed);
+
+        g.fillStyle = palette[0];
+        g.fillRect(0, 0, w, h);
+
+        // доски (форма стола не меняется)
+        var planks = 3, i, j, ph = h / planks;
+        for (i = 0; i < planks; i++) {
+            g.fillStyle = i % 2 ? 'rgba(255,255,255,0.035)' : 'rgba(0,0,0,0.045)';
+            g.fillRect(0, i * ph, w, ph);
+            if (variant !== 'white') {
+                g.fillStyle = 'rgba(0,0,0,0.42)';
+                g.fillRect(0, i * ph, w, rr(R, 1.5, 3));
+                g.fillStyle = 'rgba(255,255,255,0.10)';
+                g.fillRect(0, i * ph + 3.5, w, 1.5);
+            }
+        }
+
+        // крупные пятна тона
+        if (variant === 'oak' || variant === 'walnut') {
+            for (i = 0; i < 420; i++) {
+                var mx = rr(R, 0, w), my = rr(R, 0, h), rad = rr(R, w * 0.008, w * 0.05);
+                var dark = R() < 0.55, al = rr(R, 0.03, 0.10);
+                var grd = g.createRadialGradient(mx, my, 0, mx, my, rad);
+                grd.addColorStop(0, (dark ? 'rgba(38,22,9,' : 'rgba(255,226,180,') + (dark ? al : al * 0.75).toFixed(3) + ')');
+                grd.addColorStop(1, dark ? 'rgba(38,22,9,0)' : 'rgba(255,226,180,0)');
+                g.fillStyle = grd;
+                g.save();
+                g.translate(mx, my); g.scale(1, rr(R, 0.25, 0.62)); g.translate(-mx, -my);
+                g.beginPath(); g.arc(mx, my, rad, 0, Math.PI * 2); g.fill();
+                g.restore();
+            }
+            // широкие полосы — фигура дерева
+            for (i = 0; i < 28; i++) {
+                var sy = R() * h, sx = rr(R, -w * 0.15, w * 0.85);
+                var sl = rr(R, w * 0.2, w * 0.9), sa = rr(R, 2, 9);
+                g.beginPath(); g.moveTo(sx, sy);
+                g.bezierCurveTo(sx + sl * 0.33, sy + rr(R, -sa, sa), sx + sl * 0.66, sy + rr(R, -sa, sa), sx + sl, sy + rr(R, -sa * 0.5, sa * 0.5));
+                g.strokeStyle = R() < 0.5 ? 'rgba(40,24,10,' + rr(R, 0.04, 0.11).toFixed(3) + ')' : 'rgba(255,232,190,' + rr(R, 0.03, 0.08).toFixed(3) + ')';
+                g.lineWidth = rr(R, w * 0.004, w * 0.018);
+                g.stroke();
+            }
+        }
+
+        // волокна
+        var n = Math.round(w * h / 380);
+        for (i = 0; i < n; i++) {
+            var y = R() * h, x = R() * w, len = rr(R, w * 0.03, w * 0.4), amp = rr(R, 1, 8);
+            g.beginPath(); g.moveTo(x, y);
+            g.bezierCurveTo(x + len * 0.3, y + rr(R, -amp, amp), x + len * 0.7, y + rr(R, -amp, amp), x + len, y + rr(R, -amp * 0.4, amp * 0.4));
+            if (R() < 0.62) g.strokeStyle = 'rgba(26,14,5,' + rr(R, 0.04, 0.15).toFixed(3) + ')';
+            else g.strokeStyle = 'rgba(255,230,190,' + rr(R, 0.03, 0.11).toFixed(3) + ')';
+            g.lineWidth = rr(R, 0.6, 2.2);
+            g.stroke();
+        }
+
+        // сучки
+        if (variant === 'oak' || variant === 'walnut') {
+            for (j = 0; j < 3; j++) {
+                var kx = rr(R, w * 0.1, w * 0.9), ky = rr(R, h * 0.1, h * 0.9), kr = rr(R, w * 0.01, w * 0.028);
+                for (i = 0; i < 7; i++) {
+                    g.beginPath();
+                    g.ellipse(kx, ky, kr * (1 + i * 0.55), kr * (0.55 + i * 0.3), rr(R, 0, 3), 0, Math.PI * 2);
+                    g.strokeStyle = 'rgba(30,18,8,' + (0.16 - i * 0.018).toFixed(3) + ')';
+                    g.lineWidth = rr(R, 1, 3);
+                    g.stroke();
+                }
+            }
+        }
+
+        // свет рисуется поверх готовой текстуры
+        applyDeskLight(g, w, h, scene);
+        // зерно стола — тоже с постоянным seed, чтобы не «кипело»
+        grain(g, w, h, 0.5, seededRand((deskSession.seed ^ 0xC0FFEE) >>> 0));
+    }
+
+    function drawCover(g, img, w, h) {
+        var s = Math.max(w / img.width, h / img.height);
+        var dw = img.width * s, dh = img.height * s;
+        g.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+    }
+
+    /* ---------------- разлиновка ---------------- */
+    /* ph — фаза линовки в долях шага: листы в стопке сдвинуты друг
+       относительно друга, поэтому их линии не могут идти ровно по линиям
+       верхнего листа. Сдвигаем фазу, а не картинку: так сетка не обрезается
+       на краях и остаётся непрерывной. */
+    function drawRuling(g, W, H, mode, ph) {
+        if (mode === 'none') return;
+        var k = W / PAGE_WIDTH_PX;
+        var L = window.__hwLayout;
+        var pX = (ph && ph.x) || 0, pY = (ph && ph.y) || 0;
+        g.save();
+        g.strokeStyle = 'rgba(118,158,205,0.42)';
+        g.lineWidth = Math.max(1, k * 0.9);
+        var i, step, off;
+        if (mode === 'grid') {
+            /* клетка — ровно та же, что в раскладке текста (иначе строки «съезжают») */
+            var gw = (getMm('gridW') || 5) * MM_TO_PX * k;
+            var gh = (getMm('gridH') || 5) * MM_TO_PX * k;
+            var ox = (getMm('gridOffsetXMm') || 0) * MM_TO_PX * k;
+            var oy = (getMm('gridOffsetYMm') || 0) * MM_TO_PX * k;
+            if (gw > 2) {
+                ox = ox + pX * gw; ox -= gw * Math.floor(ox / gw);
+                for (i = ox + gw * Math.ceil((1 - ox) / gw); i < W; i += gw) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i, H); g.stroke(); }
+            }
+            if (gh > 2) {
+                oy = oy + pY * gh; oy -= gh * Math.floor(oy / gh);
+                for (i = oy + gh * Math.ceil((1 - oy) / gh); i < H; i += gh) { g.beginPath(); g.moveTo(0, i); g.lineTo(W, i); g.stroke(); }
+            }
+        } else {
+            /* линейка: каждая линия проходит точно под строкой текста (с учётом сдвига сетки) */
+            off = (getMm('gridOffsetYMm') || 0) * MM_TO_PX * k;
+            if (L && L.snap && L.step > 2) {
+                step = L.step * k;
+                var b0 = (L.firstBase + L.lift) * k + pY * step;   // уже включает сдвиг
+                var i0 = b0 - Math.floor(b0 / step) * step;
+                for (i = i0; i < H; i += step) { g.beginPath(); g.moveTo(0, i); g.lineTo(W, i); g.stroke(); }
+            } else {
+                step = 8 * MM_TO_PX * k;
+                off += pY * step;
+                for (i = off + step * Math.ceil((1 - off) / step); i < H; i += step) { g.beginPath(); g.moveTo(0, i); g.lineTo(W, i); g.stroke(); }
+            }
+        }
+        g.restore();
+    }
+
+    /* ---------------- страница -> растр ---------------- */
+    function rasterizePage(idx, S) {
+        return new Promise(function (resolve, reject) {
+            var svg = generatedSVGs[idx];
+            // выкидываем служебную клетку и чёрные отверстия — их рисуем сами
+            svg = svg.replace(/<g stroke="#e0e0e0"[\s\S]*?<\/g>/, '');
+            svg = svg.replace(/<g fill="#333">[\s\S]*?<\/g>/, '');
+            var W = Math.round(PAGE_WIDTH_PX * S), H = Math.round(PAGE_HEIGHT_PX * S);
+            svg = svg.replace(/width="[\d.]+px"/, 'width="' + W + '"')
+                     .replace(/height="[\d.]+px"/, 'height="' + H + '"');
+            var blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+            var url = URL.createObjectURL(blob);
+            var im = new Image();
+            im.onload = function () { URL.revokeObjectURL(url); resolve({ img: im, W: W, H: H }); };
+            im.onerror = function () { URL.revokeObjectURL(url); reject(new Error('SVG не отрисовался')); };
+            im.src = url;
+        });
+    }
+
+    /* uOff/vOff — сдвиг в долях листа (чтобы дырки нижнего листа совпали в кадре)
+       opt.angle — откуда свет: кромка среза блестит на свету и темнеет с тени */
+    function punchHoles(g, W, H, idx, uOff, vOff, opt) {
+        if (!$('showHolesCheck').checked) return;
+        uOff = uOff || 0; vOff = vOff || 0;
+        opt = opt || {};
+        var ku = W / PAGE_WIDTH_PX, kv = H / PAGE_HEIGHT_PX, r = HOLE_RADIUS_PX * ku;
+        var la = (typeof opt.angle === 'number') ? opt.angle : -2.30;
+        var depth = opt.depth || 0;
+        var lx = Math.cos(la), ly = Math.sin(la);
+        g.save();
+        for (var i = 0; i < 4; i++) {
+            var p = getHolePosForPage(i, idx);
+            var cx = (p.x / PAGE_WIDTH_PX + uOff) * W;
+            var cy = (p.y / PAGE_HEIGHT_PX + vOff) * H;
+            g.globalCompositeOperation = 'destination-out';
+            g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fill();
+            g.globalCompositeOperation = 'source-over';
+
+            /* Толщина листа на срезе: кромка, обращённая к свету, светлая,
+               с противоположной стороны — тёмная. Ровное кольцо одного цвета
+               как раз и читалось как «нарисованный кружок». */
+            var lw = Math.max(0.85, r * (0.15 + 0.02 * depth));
+            var gr = g.createLinearGradient(cx - lx * r, cy - ly * r, cx + lx * r, cy + ly * r);
+            gr.addColorStop(0, 'rgba(255,251,240,0.62)');
+            gr.addColorStop(0.34, 'rgba(214,200,172,0.30)');
+            gr.addColorStop(0.62, 'rgba(112,96,72,0.30)');
+            gr.addColorStop(1, 'rgba(42,32,18,0.52)');
+            g.strokeStyle = gr;
+            g.lineWidth = lw;
+            g.beginPath(); g.arc(cx, cy, r + lw * 0.42, 0, Math.PI * 2); g.stroke();
+
+            /* Внутри отверстия — только тень от самой бумаги: свет сверху
+               перекрыт листом, поэтому к дальней от света стенке темнее.
+               Саму полость не закрашиваем: там должен быть виден стол, а не
+               нарисованный кружок. Срез стопки и просвет стола добавляются
+               позже, когда стол уже нарисован (restoreHoles). */
+            g.save();
+            g.beginPath(); g.arc(cx, cy, r * 1.04, 0, Math.PI * 2); g.clip();
+            var hg = g.createLinearGradient(cx - lx * r, cy - ly * r, cx + lx * r, cy + ly * r);
+            var hA = 0.13 + 0.045 * depth;
+            hg.addColorStop(0, 'rgba(40,30,16,' + (hA * 0.42).toFixed(3) + ')');
+            hg.addColorStop(0.46, 'rgba(40,30,16,' + (hA * 0.80).toFixed(3) + ')');
+            hg.addColorStop(1, 'rgba(34,25,13,' + (hA * 1.55).toFixed(3) + ')');
+            g.fillStyle = hg;
+            g.fillRect(cx - r * 1.1, cy - r * 1.1, r * 2.2, r * 2.2);
+            g.restore();
+        }
+        g.restore();
+    }
+
+    /* ---------------- геометрия листа ---------------- */
+    function pageQuad(w, h, o) {
+        var cx = w / 2 + o.dx, cy = h / 2 + o.dy;
+        var tw = o.pageW * (1 - o.persp), bw = o.pageW * (1 + o.persp);
+        var ph = o.pageH;
+        var pts = [[-tw / 2, -ph / 2], [tw / 2, -ph / 2], [bw / 2, ph / 2], [-bw / 2, ph / 2]];
+        var a = o.tilt * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a);
+        return pts.map(function (p) {
+            return { x: cx + p[0] * ca - p[1] * sa, y: cy + p[0] * sa + p[1] * ca };
+        });
+    }
+
+    function offsetQuad(q, dx, dy, extraTilt) {
+        var cx = 0, cy = 0, i;
+        for (i = 0; i < 4; i++) { cx += q[i].x / 4; cy += q[i].y / 4; }
+        var a = extraTilt * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a);
+        return q.map(function (p) {
+            var x = p.x - cx, y = p.y - cy;
+            return { x: cx + x * ca - y * sa + dx, y: cy + x * sa + y * ca + dy };
+        });
+    }
+
+    function qpath(g, q) {
+        g.beginPath();
+        g.moveTo(q[0].x, q[0].y);
+        g.lineTo(q[1].x, q[1].y);
+        g.lineTo(q[2].x, q[2].y);
+        g.lineTo(q[3].x, q[3].y);
+        g.closePath();
+    }
+
+    function bbox(q) {
+        var x0 = Math.min(q[0].x, q[1].x, q[2].x, q[3].x);
+        var x1 = Math.max(q[0].x, q[1].x, q[2].x, q[3].x);
+        var y0 = Math.min(q[0].y, q[1].y, q[2].y, q[3].y);
+        var y1 = Math.max(q[0].y, q[1].y, q[2].y, q[3].y);
+        return { x0: x0, x1: x1, y0: y0, y1: y1 };
+    }
+
+    /* ---------------- перспективное наложение ---------------- */
+    function tri(ctx, img, s0, s1, s2, d0, d1, d2) {
+        var den = (s1.x - s0.x) * (s2.y - s0.y) - (s2.x - s0.x) * (s1.y - s0.y);
+        if (Math.abs(den) < 1e-6) return;
+
+        var a = ((d1.x - d0.x) * (s2.y - s0.y) - (d2.x - d0.x) * (s1.y - s0.y)) / den;
+        var b = ((d2.x - d0.x) * (s1.x - s0.x) - (d1.x - d0.x) * (s2.x - s0.x)) / den;
+        var c = d0.x - a * s0.x - b * s0.y;
+        var d = ((d1.y - d0.y) * (s2.y - s0.y) - (d2.y - d0.y) * (s1.y - s0.y)) / den;
+        var e = ((d2.y - d0.y) * (s1.x - s0.x) - (d1.y - d0.y) * (s2.x - s0.x)) / den;
+        var f = d0.y - d * s0.x - e * s0.y;
+
+        // суб-прямоугольник источника (чтобы не рисовать весь лист 560 раз)
+        var sx0 = Math.max(0, Math.floor(Math.min(s0.x, s1.x, s2.x)));
+        var sy0 = Math.max(0, Math.floor(Math.min(s0.y, s1.y, s2.y)));
+        var sx1 = Math.min(img.width, Math.ceil(Math.max(s0.x, s1.x, s2.x)));
+        var sy1 = Math.min(img.height, Math.ceil(Math.max(s0.y, s1.y, s2.y)));
+        var sw = sx1 - sx0, sh = sy1 - sy0;
+        if (sw <= 0 || sh <= 0) return;
+
+        ctx.save();
+        // клип чуть больше треугольника — убирает швы между ячейками
+        var mx = (d0.x + d1.x + d2.x) / 3, my = (d0.y + d1.y + d2.y) / 3;
+        function grow(p) {
+            var dx = p.x - mx, dy = p.y - my, L = Math.hypot(dx, dy) || 1;
+            return { x: p.x + dx / L * 0.8, y: p.y + dy / L * 0.8 };
+        }
+        var g0 = grow(d0), g1 = grow(d1), g2 = grow(d2);
+        ctx.beginPath();
+        ctx.moveTo(g0.x, g0.y); ctx.lineTo(g1.x, g1.y); ctx.lineTo(g2.x, g2.y);
+        ctx.closePath(); ctx.clip();
+
+        ctx.setTransform(a, d, b, e, a * sx0 + b * sy0 + c, d * sx0 + e * sy0 + f);
+        ctx.drawImage(img, sx0, sy0, sw, sh, 0, 0, sw, sh);
+        ctx.restore();
+    }
+
+    /* точка листа с учётом мелкой волны края (микро-изгиб бумаги) */
+    function quadPoint(q, u, v, sc) {
+        var uu = u, vv = v;
+        var e = sc && sc.edge;
+        if (e && e.amp > 0.001) {
+            var sw = (Math.hypot(q[1].x - q[0].x, q[1].y - q[0].y) + Math.hypot(q[2].x - q[3].x, q[2].y - q[3].y)) / 2 || 1;
+            var sh = (Math.hypot(q[3].x - q[0].x, q[3].y - q[0].y) + Math.hypot(q[2].x - q[1].x, q[2].y - q[1].y)) / 2 || 1;
+            var ampPx = e.amp * 0.0032 * sw;
+            var wu = Math.max(0, 1 - Math.min(u, 1 - u) / 0.16);
+            var wv = Math.max(0, 1 - Math.min(v, 1 - v) / 0.16);
+            var f = e.freq, p = e.phase;
+            if (wu > 0) uu = u + wu * wu * (Math.sin(v * Math.PI * 2 * f + p) * 0.7 + Math.sin(v * Math.PI * 6.3 + p * 1.7) * 0.3) * ampPx / sw;
+            if (wv > 0) vv = v + wv * wv * (Math.sin(u * Math.PI * 2 * f + p * 1.3) * 0.7 + Math.sin(u * Math.PI * 5.1 + p * 0.8) * 0.3) * ampPx / sh;
+        }
+        var tx = q[0].x + (q[1].x - q[0].x) * uu, ty = q[0].y + (q[1].y - q[0].y) * uu;
+        var bx = q[3].x + (q[2].x - q[3].x) * uu, by = q[3].y + (q[2].y - q[3].y) * uu;
+        return { x: tx + (bx - tx) * vv, y: ty + (by - ty) * vv };
+    }
+
+    function sheetPath(g, q, sc, steps) {
+        steps = steps || 26;
+        g.beginPath();
+        var i, p;
+        for (i = 0; i <= steps; i++) { p = quadPoint(q, i / steps, 0, sc); i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y); }
+        for (i = 1; i <= steps; i++) { p = quadPoint(q, 1, i / steps, sc); g.lineTo(p.x, p.y); }
+        for (i = 1; i <= steps; i++) { p = quadPoint(q, 1 - i / steps, 1, sc); g.lineTo(p.x, p.y); }
+        for (i = 1; i <= steps; i++) { p = quadPoint(q, 0, 1 - i / steps, sc); g.lineTo(p.x, p.y); }
+        g.closePath();
+    }
+
+    function warpImage(ctx, img, q, nx, ny, sc) {
+        var W = img.width, H = img.height;
+        var wave = !!(sc && sc.edge && sc.edge.amp > 0.001);
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        for (var j = 0; j < ny; j++) {
+            for (var i = 0; i < nx; i++) {
+                var u0 = i / nx, u1 = (i + 1) / nx, v0 = j / ny, v1 = (j + 1) / ny;
+                var s0 = { x: u0 * W, y: v0 * H }, s1 = { x: u1 * W, y: v0 * H };
+                var s2 = { x: u1 * W, y: v1 * H }, s3 = { x: u0 * W, y: v1 * H };
+                var d0, d1, d2, d3;
+                if (wave) {
+                    d0 = quadPoint(q, u0, v0, sc); d1 = quadPoint(q, u1, v0, sc);
+                    d2 = quadPoint(q, u1, v1, sc); d3 = quadPoint(q, u0, v1, sc);
+                } else {
+                    d0 = quadPoint(q, u0, v0, null); d1 = quadPoint(q, u1, v0, null);
+                    d2 = quadPoint(q, u1, v1, null); d3 = quadPoint(q, u0, v1, null);
+                }
+                tri(ctx, img, s0, s1, s2, d0, d1, d2);
+                tri(ctx, img, s0, s2, s3, d0, d2, d3);
+            }
+        }
+    }
+
+    /* тонкая светотень по листу — согласована со светом на столе */
+    function shadeQuad(g, q, sc) {
+        var strength = Math.max(0, Math.min(1.5, getVal('photoLight')));
+        var L = sc ? sc.light : { angle: 0, strength: 1 };
+        strength *= Math.max(0.4, L.strength || 1);
+        var bb = bbox(q), wq = bb.x1 - bb.x0;
+        g.save(); sheetPath(g, q, sc); g.clip();
+        var cx = (bb.x0 + bb.x1) / 2, cy = (bb.y0 + bb.y1) / 2;
+        var rad = Math.max(wq, bb.y1 - bb.y0) * 0.62;
+        var a = (typeof L.angle === 'number') ? L.angle : -2.30;
+        var lx = cx + Math.cos(a) * rad, ly = cy + Math.sin(a) * rad;
+        var lg = g.createLinearGradient(lx, ly, 2 * cx - lx, 2 * cy - ly);
+        lg.addColorStop(0, 'rgba(255,244,220,' + (0.16 * strength).toFixed(3) + ')');
+        lg.addColorStop(0.45, 'rgba(255,255,255,0)');
+        lg.addColorStop(1, 'rgba(25,14,0,' + (0.22 * strength).toFixed(3) + ')');
+        g.fillStyle = lg;
+        g.fillRect(bb.x0, bb.y0, bb.x1 - bb.x0, bb.y1 - bb.y0);
+        // тень у корешка (лист лежит не идеально ровно)
+        var sg = g.createLinearGradient(bb.x0, 0, bb.x0 + wq * 0.13, 0);
+        sg.addColorStop(0, 'rgba(0,0,0,' + (0.14 * strength).toFixed(3) + ')');
+        sg.addColorStop(1, 'rgba(0,0,0,0)');
+        g.fillStyle = sg;
+        g.fillRect(bb.x0, bb.y0, wq * 0.13, bb.y1 - bb.y0);
+        g.restore();
+    }
+
+    /* тёплое пятно от окна, попавшее на сам лист */
+    function windowOnSheet(g, w, h, q, sc) {
+        var L = sc && sc.light;
+        if (!L || !L.window || !L.winA) return;
+        g.save(); sheetPath(g, q, sc); g.clip();
+        g.globalCompositeOperation = 'lighter';
+        var wx = L.winX * w, wy = L.winY * h, wr = L.winW * Math.min(w, h) * 0.42;
+        var wc = '255,238,205';
+        var rg = g.createRadialGradient(wx, wy, 0, wx, wy, Math.max(1, wr));
+        rg.addColorStop(0, 'rgba(' + wc + ',' + (L.winA * 0.90).toFixed(3) + ')');
+        rg.addColorStop(0.5, 'rgba(' + wc + ',' + (L.winA * 0.42).toFixed(3) + ')');
+        rg.addColorStop(1, 'rgba(' + wc + ',0)');
+        g.fillStyle = rg;
+        g.fillRect(wx - wr, wy - wr, wr * 2, wr * 2);
+        g.restore();
+    }
+
+    /* ---------------- просвет в отверстиях ----------------
+       Листы проколоты вместе, поэтому в дырке видно не «стенку колодца»,
+       а стол — на дне стопки. Возвращаем туда настоящие пиксели стола
+       (их сняли до того, как легла стопка), притемняем по направлению
+       света и обводим кромкой среза: стол лежит близко, поэтому тень
+       мягкая, а не чёрный провал. */
+    function restoreHoles(g, patches, r, w, sc) {
+        var L = (sc && sc.light) || {};
+        var la = (typeof L.angle === 'number') ? L.angle : -2.30;
+        var lx = Math.cos(la), ly = Math.sin(la);
+        var nStack = (sc && sc.stack) ? sc.stack.length : 0;
+        /* сколько листов реально лежит в стопке — от этого зависит, сколько
+           кромок видно в срезе: две-три у тонкой пачки, четыре у толстой */
+        var rings = Math.max(1, Math.min(4, Math.round(nStack / 4)));
+        for (var i = 0; i < patches.length; i++) {
+            var p = patches[i];
+            g.save();
+            g.beginPath(); g.arc(p.x, p.y, r * 1.06, 0, Math.PI * 2); g.clip();
+
+            /* сам стол: 1:1 копия фона, поэтому волокна и рисунок
+               продолжаются без шва — ничего не дорисовываем */
+            g.drawImage(p.cnv, Math.round(p.x) - p.half, Math.round(p.y) - p.half);
+
+            /* лист перекрывает свет: у дальней от света стенки темнее.
+               Мягко — это просвет в несколько миллиметров, а не шахта. */
+            var ag = g.createLinearGradient(p.x - lx * r, p.y - ly * r,
+                                            p.x + lx * r, p.y + ly * r);
+            ag.addColorStop(0, 'rgba(26,18,8,0.04)');
+            ag.addColorStop(0.55, 'rgba(26,18,8,0.14)');
+            ag.addColorStop(1, 'rgba(16,11,5,0.28)');
+            g.fillStyle = ag;
+            g.fillRect(p.x - r, p.y - r, r * 2, r * 2);
+
+            /* кромки среза: несколько дуг у самого края, сдвинутых в ту же
+               сторону, куда «поехала» стопка относительно верхнего листа */
+            for (var e = 0; e < rings; e++) {
+                var f = (e + 1) / (rings + 1);
+                var er = r * (1.03 - 0.085 * e);
+                var ex = p.x + lx * r * 0.055 * f;
+                var ey = p.y + ly * r * 0.055 * f;
+                g.beginPath(); g.arc(ex, ey, er, 0, Math.PI * 2);
+                g.strokeStyle = 'rgba(74,60,42,' + (0.16 + 0.05 * e).toFixed(3) + ')';
+                g.lineWidth = Math.max(0.7, r * 0.05);
+                g.stroke();
+            }
+            /* верхняя кромка ловит свет — тонкая светлая нитка */
+            g.beginPath(); g.arc(p.x, p.y, r * (1.02 - 0.085 * (rings - 1) * 0.5), 0, Math.PI * 2);
+            g.strokeStyle = 'rgba(255,251,240,0.34)';
+            g.lineWidth = Math.max(0.6, r * 0.042);
+            g.stroke();
+            g.restore();
+        }
+    }
+
+    function exposurePass(g, w, h, sc) {
+        var e = (sc && sc.light && sc.light.exposure) || 0;
+        if (Math.abs(e) < 0.0015) return;
+        g.fillStyle = e > 0 ? 'rgba(255,250,238,' + (e * 1.5).toFixed(3) + ')'
+                            : 'rgba(6,10,18,' + (-e * 1.3).toFixed(3) + ')';
+        g.fillRect(0, 0, w, h);
+    }
+
+    function vignette(g, w, h, sc) {
+        var v = (sc && sc.light && sc.light.vign) || 0;
+        var cx = w * (0.5 + v * 0.35), cy = h * (0.47 + v * 0.3);
+        var rg = g.createRadialGradient(cx, cy, Math.min(w, h) * 0.28, w * 0.5, h * 0.5, Math.max(w, h) * 0.78);
+        rg.addColorStop(0, 'rgba(0,0,0,0)');
+        rg.addColorStop(1, 'rgba(0,0,0,' + (0.33 + v * 0.35).toFixed(3) + ')');
+        g.fillStyle = rg; g.fillRect(0, 0, w, h);
+        g.fillStyle = 'rgba(255,206,142,' + (0.045 - v * 0.02).toFixed(3) + ')';
+        g.fillRect(0, 0, w, h);
+    }
+
+    /* ---------------- сборка одного кадра ---------------- */
+    function renderPhoto(idx, scene, onStep) {
+        onStep = onStep || function () {};
+        var size = RES[$('photoRes').value] || RES['8'];
+        var w = size[0], h = size[1];
+        var S = (w * getVal('photoScale')) / PAGE_WIDTH_PX;
+
+        return new Promise(function (resolve, reject) {
+            onStep('растеризую страницу');
+            rasterizePage(idx, S).then(function (page) {
+                var paper = paperFill(page.W, page.H, scene);
+                var pg = paper.getContext('2d');
+                drawRuling(pg, page.W, page.H, $('ruling').value);
+                pg.globalCompositeOperation = 'multiply';
+                pg.drawImage(page.img, 0, 0, page.W, page.H);
+                pg.globalCompositeOperation = 'source-over';
+                /* Отверстия пробиты через всю стопку — листы кололи вместе, поэтому
+                   в кадре они стоят друг над другом. Просвет оставляем
+                   прозрачным: настоящий стол под листами возвращается на
+                   место отдельно (restoreHoles), иначе в дырке оказывается
+                   нарисованный кружок — самый заметный признак поделки. */
+                punchHoles(pg, page.W, page.H, idx, 0, 0,
+                    { angle: (scene.light && scene.light.angle), depth: 0 });
+
+                onStep('стол, свет и перспектива');
+                var desk = cnv(w, h);
+                var dg = desk.getContext('2d', { willReadFrequently: true });
+                if ($('deskStyle').value === 'custom' && deskImg) {
+                    drawCover(dg, deskImg, w, h);
+                    applyDeskLight(dg, w, h, scene);
+                    grain(dg, w, h, 0.5, seededRand((deskSession.seed ^ 0xC0FFEE) >>> 0));
+                } else {
+                    paintDesk(dg, w, h, scene);
+                }
+
+                // микро-сдвиг камеры: масштаб, наклон, смещение — всё в долях
+                var scale = getVal('photoScale') * (1 + scene.cam.scale);
+                var q = pageQuad(w, h, {
+                    pageW: w * scale,
+                    pageH: w * scale * (page.H / page.W),
+                    tilt: getVal('photoTilt') + scene.cam.tilt,
+                    persp: getVal('photoPersp') + scene.cam.persp,
+                    dx: getVal('photoDx') + scene.cam.dx,
+                    dy: getVal('photoDy') + scene.cam.dy
+                });
+                var shadow = getVal('photoShadow') * scene.light.shadow;
+                var shDx = w * (0.004 + scene.light.shadowDx);
+                var shDy = w * (0.006 + scene.light.shadowDy);
+
+                /* Куски стола под отверстиями снимаем ДО стопки и её тени:
+                   это настоящий фон, который потом вернётся в дырки. Рисовать
+                   стол в дырке заново нельзя — получается закрашенный кружок,
+                   по которому сразу видно, что кадр собран. */
+                var holeR = HOLE_RADIUS_PX * S;
+                var holePatches = [];
+                if (!$('showHolesCheck') || $('showHolesCheck').checked) {
+                    for (var hi = 0; hi < 4; hi++) {
+                        var hpp = getHolePosForPage(hi, idx);
+                        var hpt = quadPoint(q, hpp.x / PAGE_WIDTH_PX, hpp.y / PAGE_HEIGHT_PX, scene);
+                        var hHalf = Math.ceil(holeR * 2.4) + 3;
+                        var hxx = Math.round(hpt.x), hyy = Math.round(hpt.y);
+                        if (hxx - hHalf < 2 || hyy - hHalf < 2 || hxx + hHalf > w - 2 || hyy + hHalf > h - 2) continue;
+                        var hc = cnv(hHalf * 2, hHalf * 2);
+                        hc.getContext('2d').drawImage(desk,
+                            hxx - hHalf, hyy - hHalf, hHalf * 2, hHalf * 2,
+                            0, 0, hHalf * 2, hHalf * 2);
+                        holePatches.push({ x: hpt.x, y: hpt.y, half: hHalf, cnv: hc });
+                    }
+                }
+                /* --- СТОПКА ЛИСТОВ ПОД ВЕРХНИМ ---------------------------------
+                   Каждый лист — самостоятельный объект: свой сдвиг, свой
+                   поворот, своя волна края и свои отверстия. Рисуем от самого
+                   нижнего к верхнему, поэтому каждый следующий перекрывает
+                   предыдущий, а его тень ложится на лист под ним.
+                   Параллакс даёт камера: листы лежат на разной глубине, и при
+                   микро-сдвиге телефона края расходятся по-разному — верхний
+                   лист почти не двигается, нижние «уезжают» сильнее. */
+                var stackList = ($('underSheet').checked && scene.stack) ? scene.stack : [];
+                var rulingMode = $('ruling').value;
+
+                for (var li = stackList.length - 1; li >= 0; li--) {
+                    var lay = stackList[li], dp = lay.depth;
+                    /* Параллакс камеры насыщается с глубиной: листы лежат на
+                       разной глубине, поэтому края расходятся по-разному, но
+                       ниже третьего листа наклон уже не может двигать их
+                       сильнее — иначе стопка уезжает из кадра. */
+                    /* Параллакс камеры есть, но он физически мал: лист — это десятая
+                       доля миллиметра, полтора десятка листов дают около
+                       миллиметра толщины. Раньше множитель доходил до 3.5 и
+                       стопка «разъезжалась» на десятки пикселей — отсюда
+                       ощущение воронки. */
+                    var camF = Math.min(1.30, 0.11 * dp);
+                    var q2 = offsetQuad(q, w * lay.dx + scene.cam.dx * camF,
+                                           w * lay.dy + scene.cam.dy * camF,
+                                           lay.tilt + scene.cam.tilt * 0.10 * camF);
+                    var uScene = { edge: lay.edge, light: scene.light };
+                    var shA = Math.max(0, Math.min(0.86, (0.30 + 0.030 * dp) * shadow));
+                    var shB = w * Math.max(0.0042, 0.0098 - 0.0013 * dp);
+
+                    /* Глубокий лист виден только кромкой в несколько пикселей:
+                       тянуть на него текстуру незачем — под верхними листами
+                       её всё равно не видно, а стопка из полутора десятков
+                       листов должна считаться быстро. Цвет при этом остаётся
+                       бумажным: с глубиной он только чуть темнее, но не
+                       уходит в жёлтый, иначе нижние листы читаются как
+                       «страницы другого сорта». */
+                    if (dp > 4) {
+                        var tOne = Math.max(0.90, 1 - 0.008 * dp);
+                        dg.save();
+                        dg.shadowColor = 'rgba(0,0,0,' + shA.toFixed(3) + ')';
+                        dg.shadowBlur = shB;
+                        dg.shadowOffsetX = shDx * (0.62 + 0.05 * dp);
+                        dg.shadowOffsetY = shDy * (0.62 + 0.05 * dp);
+                        sheetPath(dg, q2, uScene);
+                        dg.fillStyle = 'rgb(' + Math.round(247 * tOne) + ',' +
+                                                  Math.round(243 * tOne) + ',' +
+                                                  Math.round(233 * tOne) + ')';
+                        dg.fill();
+                        dg.restore();
+                        /* кромка: тонкая тёмная нитка по контуру — она и
+                           отделяет лист от соседа в стопке */
+                        dg.save();
+                        sheetPath(dg, q2, uScene);
+                        dg.strokeStyle = 'rgba(96,82,58,0.28)';
+                        dg.lineWidth = Math.max(0.8, w * 0.0009);
+                        dg.stroke();
+                        dg.restore();
+                        continue;
+                    }
+
+                    /* Ближние листы — с бумагой и линовкой. Отверстия у них не
+                       пробиваем: наружу они всё равно не видны, а в кадре
+                       дырка одна — её просвет возвращаем на место отдельно,
+                       когда стол уже нарисован (см. restoreHoles ниже). */
+                    var base = underSheetBase(idx, dp, rulingMode);
+
+                    /* контактная тень: лист лежит почти вплотную, поэтому
+                       размытие маленькое, а сдвиг — по направлению света */
+                    dg.save();
+                    dg.shadowColor = 'rgba(0,0,0,' + shA.toFixed(3) + ')';
+                    dg.shadowBlur = shB;
+                    dg.shadowOffsetX = shDx * (0.62 + 0.06 * dp);
+                    dg.shadowOffsetY = shDy * (0.62 + 0.06 * dp);
+                    sheetPath(dg, q2, uScene); dg.fillStyle = '#e7e0cf'; dg.fill();
+                    dg.restore();
+
+                    warpImage(dg, base, q2, 12, 16, uScene);
+                    shadeQuad(dg, q2, scene);
+                    windowOnSheet(dg, w, h, q2, scene);
+
+                    /* срез бумаги: у края видна толщина листа — тонкая светлая
+                       линия изнутри контура */
+                    dg.save();
+                    sheetPath(dg, q2, uScene); dg.clip();
+                    dg.globalCompositeOperation = 'lighter';
+                    dg.strokeStyle = 'rgba(255,249,235,' + (0.085 - 0.015 * dp).toFixed(3) + ')';
+                    dg.lineWidth = Math.max(1, w * 0.0013);
+                    dg.stroke();
+                    dg.restore();
+                }
+
+                // тень основного листа — по волнистому контуру. Лист лежит на
+                // стопке почти вплотную: размытие умеренное, а не «пар над
+                // столом», поэтому лист не выглядит парящим.
+                dg.save();
+                dg.shadowColor = 'rgba(0,0,0,' + Math.max(0, Math.min(0.85, 0.50 * shadow)).toFixed(3) + ')';
+                dg.shadowBlur = w * 0.0115;
+                dg.shadowOffsetX = shDx; dg.shadowOffsetY = shDy;
+                sheetPath(dg, q, scene); dg.fillStyle = '#f7f2e5'; dg.fill();
+                dg.restore();
+
+                onStep('накладываю лист');
+                var blur = scene.blur || { on: false };
+                // отдельный слой нужен, если лист будет смазан (иначе смаз
+                // «пачкает» стол) или если в листе есть дырка от надрыва
+                // (иначе светотень закрасит стол в прорези).
+                var needLayer = blur.on || !!scene.tear;
+                var tg = dg, sheetCnv = null;
+                if (needLayer) {
+                    sheetCnv = cnv(w, h);
+                    tg = sheetCnv.getContext('2d');
+                }
+                warpImage(tg, paper, q, 16, 22, scene);
+                shadeQuad(tg, q, scene);
+                windowOnSheet(tg, w, h, q, scene);
+
+                if (sheetCnv) {
+                    var k = w / 2448;   // смаз задан в пикселях для 8 МП
+                    if (!blur.on) {
+                        dg.drawImage(sheetCnv, 0, 0);
+                    } else if (blur.soft > 0) {
+                        dg.save();
+                        dg.filter = 'blur(' + Math.max(0.4, w * 0.00055 * blur.soft).toFixed(2) + 'px)';
+                        dg.drawImage(sheetCnv, 0, 0);
+                        dg.restore();
+                    } else {
+                        var ox = blur.dx * k, oy = blur.dy * k;
+                        dg.save();
+                        dg.globalAlpha = Math.max(0.05, Math.min(0.35, blur.alpha));
+                        dg.drawImage(sheetCnv, ox, oy);
+                        dg.drawImage(sheetCnv, -ox * 0.55, -oy * 0.55);
+                        dg.restore();
+                        dg.drawImage(sheetCnv, 0, 0);
+                    }
+                }
+
+/* Просвет в отверстиях: настоящий стол, тень от бумаги и тонкий
+                   срез стопки. Кладём поверх стопки и поверх тени верхнего
+                   листа, поэтому в дырке видно именно стол. */
+                if (holePatches.length) restoreHoles(dg, holePatches, holeR, w, scene);
+
+                onStep('свет, зерно и JPG');
+                exposurePass(dg, w, h, scene);
+                vignette(dg, w, h, scene);
+                grain(dg, w, h, getVal('photoNoise'), seededRand((scene.seed ^ 0x51ED) >>> 0));
+
+                desk.toBlob(function (blob) {
+                    if (!blob) { reject(new Error('браузер не отдал JPG')); return; }
+                    resolve({
+                        blob: blob,
+                        name: 'photo_page' + (idx + 1) + '.jpg',
+                        w: w, h: h
+                    });
+                }, 'image/jpeg', 0.9);
+            }).catch(reject);
+        });
+    }
+
+    function download(blob, name) {
+        if (window.saveAs) { saveAs(blob, name); return; }
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob); a.download = name;
+        document.body.appendChild(a); a.click(); a.remove();
+    }
+
+    /* одна страница */
+    function exportPhoto() {
+        if (!generatedSVGs.length) { setStatus('Сначала нажми ОБНОВИТЬ'); return; }
+        var btn = $('photoBtn'); btn.disabled = true;
+        var scene = makeScene(hashStr('page:' + currentPageIndex));
+        var n = 0;
+        renderPhoto(currentPageIndex, scene, function (msg) {
+            n++; setStatus(n + '/4 · ' + msg + '…');
+        }).then(function (res) {
+            download(res.blob, res.name);
+            setStatus('Готово: ' + res.w + '×' + res.h + ', ' + Math.round(res.blob.size / 1024) + ' КБ');
+            btn.disabled = false;
+        }).catch(function (err) {
+            setStatus('Ошибка: ' + err.message);
+            btn.disabled = false;
+            console.error(err);
+        });
+    }
+
+    /* все страницы — каждая в своей независимой сцене, одним ZIP */
+    var allPhotosBusy = false;
+    function exportAllPhotos() {
+        if (allPhotosBusy) return;
+        if (typeof JSZip === 'undefined') { setStatus('JSZip не загрузился — ZIP недоступен'); return; }
+        if (!generatedSVGs.length) { setStatus('Сначала нажми ОБНОВИТЬ'); return; }
+
+        var btn = $('photoBtn'), btnAll = $('photoAllBtn');
+        var total = generatedSVGs.length;
+        allPhotosBusy = true;
+        btn.disabled = true; btnAll.disabled = true;
+
+        var zip = new JSZip();
+        var i = 0;
+
+        function fail(err) {
+            setStatus('Ошибка ZIP: ' + err.message);
+            btn.disabled = false; btnAll.disabled = false; allPhotosBusy = false;
+            console.error(err);
+        }
+
+        function step() {
+            if (i >= total) {
+                setStatus('упаковываю ZIP…');
+                zip.generateAsync({ type: 'blob', compression: 'STORE' },
+                    function (meta) { setStatus('… ' + Math.round(meta.percent) + '%'); }
+                ).then(function (blob) {
+                    download(blob, 'photos_all.zip');
+                    setStatus('Готово: ' + total + ' фото, ' + Math.round(blob.size / 1024) + ' КБ');
+                    btn.disabled = false; btnAll.disabled = false; allPhotosBusy = false;
+                }).catch(fail);
+                return;
+            }
+            setStatus('страница ' + (i + 1) + ' из ' + total + ' · готовлю кадр…');
+            renderPhoto(i, makeScene(hashStr('page:' + i)), function (msg) {
+                setStatus('страница ' + (i + 1) + ' из ' + total + ' · ' + msg + '…');
+            }).then(function (res) {
+                zip.file(res.name, res.blob);
+                i++;
+                step();
+            }).catch(fail);
+        }
+        step();
+    }
+
+    /* ---------------- инициализация панели ---------------- */
+    /* Бумага листов из-под верхнего. Текстура — свойство самой бумаги, а не
+       кадра, поэтому seed считается от стола и номера страницы: между кадрами
+       волокна не «кипят», а кэш реально работает. Линовка — со своей фазой:
+       лист сдвинут, значит и его линии стоят иначе, чем у верхнего. */
+    var _underCache = {}, _underKeys = 0;
+    function underSheetBase(idx, depth, rulingMode) {
+        var key = idx + '|' + depth + '|' + rulingMode;
+        if (_underCache[key]) return _underCache[key];
+        if (_underKeys > 20) { _underCache = {}; _underKeys = 0; }
+        var seed = (deskSession.seed ^ 0x2B7F1A3D ^ ((idx + 1) * 0x9E3779B1) ^ (depth * 0x85EBCA6B)) >>> 0;
+        // без creases/tear и без надрыва: заломы и рваный край — только на
+        // верхнем листе, нижние лежат ровно, у них своя волна края
+        var c = paperFill(560, 792, { seed: seed });
+        var g = c.getContext('2d');
+        var pr = seededRand((seed ^ 0x51A7E3C5) >>> 0);
+        drawRuling(g, c.width, c.height, rulingMode, { x: 0.14 + pr() * 0.62, y: 0.14 + pr() * 0.62 });
+        /* Глубже лист — меньше света до него доходит, но бумага в стопке
+           та же самая: это та же белая клетка, а не отдельный жёлтый сорт.
+           Поэтому тон гасим нейтрально и совсем немного — иначе нижние
+           листы начинают отличаться по цвету от верхнего. */
+        g.fillStyle = 'rgba(70,62,48,' + Math.min(0.035, 0.006 * (depth - 1)).toFixed(3) + ')';
+        g.fillRect(0, 0, c.width, c.height);
+        _underCache[key] = c; _underKeys++;
+        return c;
+    }
+
+
+    function bind() {
+        var b = $('photoBtn');
+        if (!b) return;
+        b.addEventListener('click', exportPhoto);
+        var ba = $('photoAllBtn');
+        if (ba) ba.addEventListener('click', exportAllPhotos);
+
+        var f = $('deskPhoto');
+        if (f) f.addEventListener('change', function (e) {
+            var file = e.target.files[0];
+            if (!file) return;
+            var im = new Image();
+            im.onload = function () {
+                deskImg = im;
+                $('deskStyle').value = 'custom';
+                setStatus('Фон стола загружен: ' + im.width + '×' + im.height);
+            };
+            im.src = URL.createObjectURL(file);
+        });
+    }
+
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bind);
+    else bind();
+})();
+
+</script>
+</body>
+</html>

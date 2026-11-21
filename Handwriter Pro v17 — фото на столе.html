@@ -1,0 +1,1612 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Handwriter Pro v17 — фото на столе (ИИ не подключён)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+    <style>
+        :root { --primary: #4a90e2; --bg: #eef2f5; --panel: #ffffff; --text: #333; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: var(--bg); color: var(--text); margin: 0; display: flex; height: 100vh; overflow: hidden; }
+        
+        .sidebar { width: 380px; background: var(--panel); border-right: 1px solid #ccc; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; box-shadow: 2px 0 10px rgba(0,0,0,0.05); flex-shrink: 0; z-index: 20; }
+        .sidebar h2 { margin-top: 0; font-size: 1.2rem; color: var(--primary); border-bottom: 2px solid var(--primary); padding-bottom: 10px; }
+        .control-group { background: #f9f9f9; padding: 12px; border-radius: 8px; border: 1px solid #eee; }
+        .control-group h3 { font-size: 0.95rem; margin: 0 0 10px 0; text-transform: uppercase; color: #555; font-weight: 700; border-bottom: 1px solid #ddd; padding-bottom: 5px; display: flex; justify-content: space-between; align-items: center; }
+        
+        label { display: block; font-size: 0.85rem; margin-bottom: 5px; color: #444; }
+        .row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+        .col { flex: 1; }
+        input[type="range"] { width: 100%; cursor: pointer; margin: 5px 0; }
+        input[type="text"].mm-input { width: 50px; padding: 4px; text-align: right; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; }
+        input[type="number"] { width: 100%; padding: 4px; border: 1px solid #ccc; border-radius: 4px; }
+        textarea { width: 100%; height: 100px; padding: 8px; border: 1px solid #ccc; font-family: sans-serif; resize: vertical; }
+
+        .expanded-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(255,255,255,0.98); z-index: 5000; padding: 40px; flex-direction: column; }
+        .expanded-overlay.active { display: flex; }
+        .expanded-overlay textarea { flex: 1; font-size: 1.2rem; box-shadow: 0 0 20px rgba(0,0,0,0.1); border: 2px solid var(--primary); padding: 20px; }
+        .close-expand-btn { position: absolute; top: 10px; right: 20px; background: #d9534f; color: white; border: none; padding: 8px 15px; cursor: pointer; border-radius: 4px; font-weight: bold; }
+        .expand-btn { background: transparent; color: var(--primary); border: 1px solid var(--primary); padding: 2px 8px; font-size: 0.8rem; cursor: pointer; border-radius: 4px; }
+
+        .io-buttons { display: flex; gap: 10px; margin-bottom: 15px; }
+        .io-btn { flex: 1; padding: 8px; border: 1px solid #ccc; background: #fff; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.8rem; }
+        .io-btn:hover { background: #f0f0f0; }
+        
+        .sub-group { border-left: 3px solid var(--primary); padding-left: 10px; margin-bottom: 10px; background: #fff; padding: 5px; }
+        .feature-box { background: #fff; border: 1px solid #ddd; padding: 8px; border-radius: 4px; margin-bottom: 8px; }
+        .val-disp { float: right; font-weight: bold; color: var(--primary); font-size: 0.8rem;}
+        
+        /* Стили для таблицы отверстий */
+        .holes-grid { display: grid; grid-template-columns: 30px 1fr 1fr; gap: 5px; align-items: center; margin-top: 5px; }
+        .holes-grid .head { font-size: 0.7rem; font-weight: bold; text-align: center; color: #666; }
+        .hole-row { display: contents; }
+        .hole-idx { font-weight: bold; font-size: 0.8rem; color: var(--primary); text-align: center;}
+
+        .toolbar { width: 70px; background: #f8f9fa; border-right: 1px solid #ccc; display: flex; flex-direction: column; align-items: center; padding: 20px 5px; gap: 15px; z-index: 15; flex-shrink: 0; }
+        .tool-btn { width: 45px; height: 45px; border: 1px solid #ccc; background: white; border-radius: 8px; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 1.5rem; transition: all 0.2s; user-select: none; }
+        .tool-btn:hover { background: #eee; }
+        .tool-btn.active { background: var(--primary); color: white; border-color: var(--primary); box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        .divider { width: 80%; height: 1px; background: #ddd; margin: 5px 0; }
+        button.action-btn { background: var(--primary); color: white; border: none; padding: 10px; border-radius: 4px; width: 100%; cursor: pointer; margin-top:5px; font-weight: bold;}
+        .btn-download { background: #28a745; margin-top: 10px; }
+
+        .main-content { flex: 1; padding: 30px; overflow: auto; display: flex; flex-direction: column; align-items: center; background-color: #555; background-image: linear-gradient(45deg, #444 25%, transparent 25%), linear-gradient(-45deg, #444 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #444 75%), linear-gradient(-45deg, transparent 75%, #444 75%); background-size: 20px 20px; }
+        
+        .canvas-wrapper { 
+            box-shadow: 0 0 30px rgba(0,0,0,0.5); 
+            background: white; 
+            margin-bottom: 20px; 
+            border: 1px solid #999; 
+            position: relative; 
+            width: 794px; /* A4 width @96dpi */
+            height: 1123px; /* A4 height @96dpi */
+            flex-shrink: 0;
+        }
+        
+        #previewContainer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; }
+        #previewContainer svg { width: 100%; height: 100%; display: block; }
+        
+        #interactionLayer { 
+            position: absolute; 
+            top: 0; 
+            left: 0; 
+            width: 794px; 
+            height: 1123px; 
+            z-index: 5; 
+            cursor: default; 
+        }
+
+        .pagination-controls { display: flex; gap: 15px; align-items: center; background: white; padding: 10px 20px; border-radius: 30px; box-shadow: 0 5px 15px rgba(0,0,0,0.2); position: sticky; bottom: 20px; z-index: 100; }
+        .pag-btn { width: auto; padding: 8px 15px; margin: 0; border-radius: 20px; cursor: pointer; border: 1px solid #ccc;}
+    </style>
+    <style>
+    /* ---- фоторежим ---- */
+    #photoStatus { font-size: .72rem; color: #666; margin-top: 6px; min-height: 1.2em; line-height: 1.3; }
+    #photoBtn { background: #8e44ad !important; }
+    .pg-photo h3 { color: #8e44ad !important; border-color: #8e44ad !important; }
+
+    /* ---- ИИ ---- */
+    .ai-group h3 { color: #0b7a6f !important; border-color: #0b7a6f !important; }
+    .ai-group input[type="text"], .ai-group input[type="password"] { width: 100%; padding: 5px; border: 1px solid #ccc; border-radius: 4px; font-size: .82rem; box-sizing: border-box; }
+    .ai-group .sub-group { background: #fff; border: 1px solid #e6e6e6; border-radius: 6px; padding: 7px 9px; margin-bottom: 7px; }
+    .ai-primary { background: #0b7a6f !important; color: #fff !important; border-color: #0b7a6f !important; }
+    .ai-primary:disabled, .io-btn:disabled { opacity: .5; cursor: not-allowed; }
+    #aiStatus { font-size: .75rem; color: #555; margin-top: 8px; min-height: 1.2em; line-height: 1.35; }
+    #aiStatus.err { color: #b03030; }
+    #aiStatus.ok { color: #0b7a6f; }
+    #aiReport { font-size: .72rem; color: #555; line-height: 1.4; }
+    #aiReport table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+    #aiReport td { padding: 1px 3px; border-bottom: 1px dotted #e2e2e2; }
+    #aiReport td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+    #aiResultBox { margin-top: 6px; font-size: .72rem; }
+    #aiResultBox summary { cursor: pointer; color: #0b7a6f; }
+    #aiResultBox pre { max-height: 180px; overflow: auto; background: #f4f4f4; padding: 6px; border-radius: 4px; font-size: .68rem; white-space: pre-wrap; word-break: break-word; }
+</style>
+</head>
+<body>
+
+<div class="expanded-overlay" id="expandedOverlay">
+    <button class="close-expand-btn" id="closeExpandBtn">СВЕРНУТЬ ✖</button>
+    <textarea id="textInputExpanded"></textarea>
+</div>
+
+<div class="sidebar">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h2>Handwriter v16</h2>
+    </div>
+    
+    <div class="io-buttons">
+        <button class="io-btn" id="exportBtn">⬆ Экспорт</button>
+        <button class="io-btn" id="importBtn">⬇ Импорт</button>
+        <input type="file" id="importFile" accept=".json" style="display:none;">
+    </div>
+
+    <!-- Текст -->
+    <div class="control-group">
+        <h3>1. Текст и Цвет <button id="expandTextBtn" class="expand-btn">↕</button></h3>
+        <textarea id="textInput">Привет!
+Это версия 16.0.
+1. Шрифты теперь ЭКСКЛЮЗИВНЫЕ (системные не подмешиваются).
+2. Настройки отверстий точные (в мм).
+3. Перетаскивание обновляет цифры координат.</textarea>
+        <div class="row"><label>Цвет ручки <input type="color" id="textColor" value="#000044"></label></div>
+    </div>
+
+    <!-- ИИ -->
+    <div class="control-group ai-group">
+        <h3>2. 🤖 ИИ (OpenAI-совместимый API)</h3>
+
+        <div id="aiNotice" style="font-size:.75rem; line-height:1.45; color:#8a5a00; background:#fff6e0; border:1px solid #f0d9a8; border-radius:6px; padding:8px; margin-bottom:8px;">
+            В этой копии (v17, «фото на столе») ИИ-блок не подключён: здесь нет ни запроса к модели, ни перьевого ядра для пометок.
+            Рабочий блок — в файле <a href="handwritten%20text.html" target="_blank" rel="noopener" style="color:#0b7a6f;"><b>handwritten text.html</b></a>
+            (он же «Handwriter v16 + ИИ»). Поля ниже оставлены только для совместимости разметки.
+        </div>
+
+        <label>Базовый URL</label>
+        <input type="text" id="aiBaseUrl" value="https://api.openai.com/v1" placeholder="https://api.openai.com/v1" spellcheck="false">
+        <label style="margin-top:6px">API-ключ</label>
+        <input type="password" id="aiApiKey" placeholder="sk-..." spellcheck="false" autocomplete="off">
+        <label style="margin-top:6px">Модель</label>
+        <input type="text" id="aiModel" value="gpt-4o-mini" placeholder="gpt-4o-mini" spellcheck="false">
+
+        <div class="row" style="margin-top:6px">
+            <div class="col"><label>Температура <span class="val-disp" id="v_aiTemp">0.8</span></label>
+                <input type="range" id="aiTemp" min="0" max="1.5" step="0.1" value="0.8"></div>
+            <div class="col"><label>Макс. токенов</label><input type="number" id="aiMaxTokens" value="4000" min="256" max="16000" step="256"></div>
+        </div>
+        <div class="row">
+            <div class="col"><label>Таймаут, с</label><input type="number" id="aiTimeout" value="90" min="10" max="600" step="5"></div>
+            <div class="col" style="padding-top:16px"><label><input type="checkbox" id="aiJsonMode" checked> JSON-режим</label></div>
+        </div>
+        <div class="row"><label><input type="checkbox" id="aiRemember"> Запомнить ключ в браузере</label></div>
+        <div class="row"><button id="aiCheckBtn" class="io-btn">Проверить связь</button></div>
+
+        <div class="sub-group">
+            <label><input type="checkbox" id="aiErrCheck" checked> Орфография и пунктуация</label>
+            <div class="row"><label>Частота <span class="val-disp" id="v_aiErrRate">1.5</span></label>
+                <input type="range" id="aiErrRate" min="0" max="5" step="0.1" value="1.5"></div>
+        </div>
+        <div class="sub-group">
+            <label><input type="checkbox" id="aiTableCheck" checked> Убрать таблицы (переписать текстом)</label>
+        </div>
+        <div class="sub-group">
+            <label><input type="checkbox" id="aiSemCheck" checked> Смысловые ошибки</label>
+            <div class="row"><label>Частота <span class="val-disp" id="v_aiSemRate">0.8</span></label>
+                <input type="range" id="aiSemRate" min="0" max="3" step="0.1" value="0.8"></div>
+        </div>
+        <div class="sub-group">
+            <label><input type="checkbox" id="aiMarksCheck" checked> Рисование пометок</label>
+            <div class="row"><label>Плотность <span class="val-disp" id="v_aiMarkDensity">40</span>%</label>
+                <input type="range" id="aiMarkDensity" min="0" max="100" step="5" value="40"></div>
+            <div class="row"><label><input type="checkbox" id="aiPenColor"> Свой цвет пометок</label>
+                <input type="color" id="aiMarkColor" value="#c0392b"></div>
+        </div>
+        <div class="sub-group">
+            <label><input type="checkbox" id="aiLayoutCheck" checked> Разбивка и акценты</label>
+            <div class="row"><label>Плотность <span class="val-disp" id="v_aiLayoutDensity">50</span>%</label>
+                <input type="range" id="aiLayoutDensity" min="0" max="100" step="5" value="50"></div>
+        </div>
+
+        <div class="row" style="margin-top:8px">
+            <button id="aiProcessBtn" class="io-btn ai-primary">Обработать ИИ</button>
+            <button id="aiCancelBtn" class="io-btn">Стоп</button>
+        </div>
+        <div class="row">
+            <button id="aiResetBtn" class="io-btn">Сбросить разметку</button>
+            <button id="aiToFieldBtn" class="io-btn">Текст → в поле</button>
+        </div>
+        <div id="aiStatus">ИИ в этой копии не подключён — откройте handwritten text.html</div>
+        <div id="aiReport"></div>
+        <details id="aiResultBox"><summary>Ответ ИИ (JSON)</summary><pre id="aiResultPre"></pre></details>
+    </div>
+
+    <!-- Шрифты -->
+    <div class="control-group">
+        <h3>3. Шрифты (1-4 шт)</h3>
+        <input type="file" id="fontFile1" accept=".ttf,.otf,.woff" style="margin-bottom:5px">
+        <input type="file" id="fontFile2" accept=".ttf,.otf,.woff" style="margin-bottom:5px">
+        <input type="file" id="fontFile3" accept=".ttf,.otf,.woff" style="margin-bottom:5px">
+        <input type="file" id="fontFile4" accept=".ttf,.otf,.woff">
+    </div>
+
+    <!-- Нажим -->
+    <div class="control-group">
+        <h3>4. Нажим</h3>
+        <label><input type="checkbox" id="pressureCheck" checked> Вариативность</label>
+        <div class="row">
+            <div class="col"><label>Мин: <span id="v_pmin" class="val-disp">0.1</span></label><input type="range" id="pressureMin" min="0" max="2" step="0.1" value="0.1"></div>
+            <div class="col"><label>Макс: <span id="v_pmax" class="val-disp">1.2</span></label><input type="range" id="pressureMax" min="0" max="5" step="0.1" value="1.2"></div>
+        </div>
+        <label style="margin-top:6px;">Плавность нажима <span id="v_psmooth" class="val-disp">70</span>%</label>
+        <input type="range" id="pressureSmooth" min="0" max="100" step="5" value="70">
+        <div style="font-size:.68rem; color:#777; margin-top:3px; line-height:1.3;">Нажим идёт не по буквам, а медленной волной: в начале предложения буквы тоньше и плавно «разгоняются», к концу — плавно затухают. 0 % — резче, 100 % — максимально плавно.</div>
+
+        <label style="margin-top:8px;"><input type="checkbox" id="opacityCheck" checked> Прозрачность (подсохшее перо)</label>
+        <label style="margin-top:6px;">Вариативность прозрачности <span id="v_opacityVar" class="val-disp">35</span>%</label>
+        <input type="range" id="opacityVar" min="0" max="100" step="5" value="35">
+        <div style="font-size:.68rem; color:#777; margin-top:3px; line-height:1.3;">Когда ручка перестаёт писать, буквы чуть бледнеют. Проявляется редко и заметно в основном на тонких буквах — там, где нажим слабый. 0 % — прозрачности нет вообще, 100 % — бледнеют все буквы на странице.</div>
+    </div>
+
+    <!-- Интервалы -->
+    <div class="control-group">
+        <h3>5. Размер</h3>
+        <label>Размер (px) <span id="v_fs" class="val-disp">24</span></label>
+        <input type="range" id="fontSize" min="10" max="100" value="24">
+        <div class="row" style="margin-top:5px"><label>Межстрочный (мм):</label><input type="text" id="lineHeightMm" class="mm-input" value="9,0"></div>
+        <div class="row"><label>Кернинг (px): <span id="v_kern" class="val-disp">0</span></label><input type="range" id="letterSpacing" min="-5" max="10" step="0.5" value="0"></div>
+        <label><input type="checkbox" id="spaceRandomCheck" checked> Случайные пробелы</label>
+        <div class="row">
+            <div class="col"><label>Мин(мм):</label><input type="text" id="spaceMinMm" class="mm-input" value="3,0"></div>
+            <div class="col"><label>Макс(мм):</label><input type="text" id="spaceMaxMm" class="mm-input" value="6,0"></div>
+        </div>
+    </div>
+
+    <!-- Рандомизация -->
+    <div class="control-group">
+        <h3>6. Рандомизация</h3>
+        <div class="sub-group">
+            <span class="sub-title">СТРОКИ</span>
+             <label>Амплитуда (± мм): <span id="v_ljump" class="val-disp">0.5</span></label>
+             <input type="range" id="lineJumpMaxMm" min="0" max="5" step="0.1" value="0.5">
+             <label>Отступ (мм): <span id="v_lind" class="val-disp">5</span></label>
+             <input type="range" id="lineIndentMm" min="0" max="30" value="5">
+        </div>
+        <div class="sub-group">
+            <span class="sub-title">БУКВЫ</span>
+            <label>Вращение (%): <span id="v_afreq" class="val-disp">100</span></label>
+            <input type="range" id="angleProb" min="0" max="100" value="100">
+            <div class="row">
+                <div class="col"><label>Мин°:</label><input type="number" id="angleMin" value="-5"></div>
+                <div class="col"><label>Макс°:</label><input type="number" id="angleMax" value="5"></div>
+            </div>
+            <label>Сдвиг Y (%): <span id="v_yfreq" class="val-disp">50</span></label>
+            <input type="range" id="yProb" min="0" max="100" value="50">
+             <div class="row">
+                <div class="col"><label>Мин(мм):</label><input type="text" id="yMinMm" class="mm-input" value="-0,5"></div>
+                <div class="col"><label>Макс(мм):</label><input type="text" id="yMaxMm" class="mm-input" value="0,5"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Поля и Отверстия -->
+    <div class="control-group">
+        <h3>7. Поля и Отверстия</h3>
+        <div class="feature-box">
+            <label class="checkbox-label"><input type="checkbox" id="showHolesCheck" checked> Включить отверстия</label>
+            <div style="margin-top:5px; padding-left: 20px; font-size:0.8rem;">
+                <label><input type="checkbox" id="mirrorHolesCheck" checked> Зеркально</label>
+                <label><input type="checkbox" id="printHolesCheck"> Печатать</label>
+            </div>
+            
+            <!-- Новая сетка настроек координат отверстий -->
+            <div class="holes-grid" style="border-top:1px solid #eee; margin-top:8px; padding-top:5px;">
+                <div class="head">№</div>
+                <div class="head">Слева(мм)</div>
+                <div class="head">Сверху(мм)</div>
+
+                <div class="hole-row">
+                    <div class="hole-idx">1</div>
+                    <input type="text" id="hole1x" class="mm-input hole-inp" value="15.0">
+                    <input type="text" id="hole1y" class="mm-input hole-inp" value="30.0">
+                </div>
+                <div class="hole-row">
+                    <div class="hole-idx">2</div>
+                    <input type="text" id="hole2x" class="mm-input hole-inp" value="15.0">
+                    <input type="text" id="hole2y" class="mm-input hole-inp" value="110.0">
+                </div>
+                <div class="hole-row">
+                    <div class="hole-idx">3</div>
+                    <input type="text" id="hole3x" class="mm-input hole-inp" value="15.0">
+                    <input type="text" id="hole3y" class="mm-input hole-inp" value="190.0">
+                </div>
+                <div class="hole-row">
+                    <div class="hole-idx">4</div>
+                    <input type="text" id="hole4x" class="mm-input hole-inp" value="15.0">
+                    <input type="text" id="hole4y" class="mm-input hole-inp" value="270.0">
+                </div>
+            </div>
+        </div>
+        <div class="row-wrap" style="margin-top:10px;">
+            <div class="col"><label>Верх (поля):</label> <input type="text" id="marginTopMm" class="mm-input" value="25,0"></div>
+            <div class="col"><label>Низ (поля):</label> <input type="text" id="marginBottomMm" class="mm-input" value="20,0"></div>
+        </div>
+        <div class="row-wrap">
+            <div class="col"><label>Слева(неч):</label> <input type="text" id="marginLeftMm" class="mm-input" value="25,0"></div>
+            <div class="col"><label>Слева(чет):</label> <input type="text" id="marginLeftEvenMm" class="mm-input" value="25,0"></div>
+        </div>
+        <div class="row"><label>Ширина текста:</label> <input type="text" id="textWidthMm" class="mm-input" value="160,0"></div>
+    </div>
+
+    <!-- Помарки -->
+    <div class="control-group">
+        <h3>8. Помарки</h3>
+        <label>Ошибка в букве (%): <span id="v_merr" class="val-disp">0</span></label>
+        <input type="range" id="mistakeLetterProb" min="0" max="10" step="0.1" value="0">
+        <label>Ошибка в слове (%): <span id="v_werr" class="val-disp">0</span></label>
+        <input type="range" id="mistakeWordProb" min="0" max="10" step="0.1" value="0">
+    </div>
+
+    <!-- Клетка -->
+    <div class="control-group" style="border: 2px solid #ddd;">
+        <h3>9. Клетка (Grid)</h3>
+        <div class="feature-box">
+            <label class="checkbox-label"><input type="checkbox" id="showGridCheck"> Включить клетку</label>
+            <div class="row" style="margin-top:5px;">
+                <div class="col"><label>Ширина(мм):</label><input type="text" id="gridW" class="mm-input" value="5,0"></div>
+                <div class="col"><label>Высота(мм):</label><input type="text" id="gridH" class="mm-input" value="5,0"></div>
+            </div>
+            <div class="row" style="margin-top:5px;">
+                <div class="col"><label>Сдвиг вправо(мм):</label><input type="text" id="gridOffsetXMm" class="mm-input" value="0,0"></div>
+                <div class="col"><label>Сдвиг вниз(мм):</label><input type="text" id="gridOffsetYMm" class="mm-input" value="0,0"></div>
+            </div>
+            <div style="font-size:.68rem; color:#777; margin-top:3px; line-height:1.3;">Сдвиг всей сетки относительно листа (можно отрицательные). Положительное «вниз» поднимает клетки вверх, если задать минус.</div>
+            <label style="margin-top:5px; font-weight:bold; color:var(--primary)"><input type="checkbox" id="printGridCheck"> Печатать</label>
+
+            <div style="border-top:1px solid #eee; margin-top:8px; padding-top:6px;">
+                <label class="checkbox-label"><input type="checkbox" id="cellSnapCheck" checked> Посадка строк в клетку</label>
+                <div class="row" style="margin-top:5px;">
+                    <div class="col"><label>Подъём от линии(мм):</label><input type="text" id="cellLiftMm" class="mm-input" value="0,6"></div>
+                    <div class="col"><label>Клеток на строку:</label><select id="cellsPerRowSel" style="width:100%;padding:3px;">
+                        <option value="auto" selected>Авто</option>
+                        <option value="1">1 клетка</option>
+                        <option value="2">2 клетки</option>
+                        <option value="3">3 клетки</option>
+                        <option value="4">4 клетки</option>
+                    </select></div>
+                </div>
+                <label class="checkbox-label" style="margin-top:5px;"><input type="checkbox" id="cellFitCheck" checked> Подгонять буквы под клетку</label>
+                <div id="cellHint" style="font-size:.68rem; color:#777; margin-top:4px; line-height:1.3;"></div>
+            </div>
+        </div>
+    </div>
+
+    
+    <!-- ===================== ФОТО НА СТОЛЕ ===================== -->
+    <div class="control-group pg-photo" style="border:2px solid #8e44ad;">
+        <h3>10. 📸 Фото на столе</h3>
+
+        <div class="sub-group">
+            <span class="sub-title">ФОН</span>
+            <label>Поверхность стола</label>
+            <select id="deskStyle" style="width:100%;padding:5px;margin-bottom:6px;">
+                <option value="oak">Дерево (дуб)</option>
+                <option value="walnut">Тёмное дерево (орех)</option>
+                <option value="laminate">Серый ламинат</option>
+                <option value="white">Светлый однотонный</option>
+                <option value="custom">Своё фото стола…</option>
+            </select>
+            <input type="file" id="deskPhoto" accept="image/*" style="font-size:.72rem;width:100%;">
+            <label style="margin-top:6px;">Разлиновка листа</label>
+            <select id="ruling" style="width:100%;padding:5px;">
+                <option value="none">Без разлиновки</option>
+                <option value="grid" selected>Клетка 5 мм</option>
+                <option value="lined">Линейка 8 мм</option>
+            </select>
+            <label class="checkbox-label" style="margin-top:6px;">
+                <input type="checkbox" id="underSheet" checked> Лист под низом (тетрадь)
+            </label>
+        </div>
+
+        <div class="sub-group">
+            <span class="sub-title">КАМЕРА</span>
+            <label>Наклон (°): <span id="v_photoTilt" class="val-disp">1.2</span></label>
+            <input type="range" id="photoTilt" min="-10" max="10" step="0.1" value="1.2">
+            <label>Перспектива: <span id="v_photoPersp" class="val-disp">0.05</span></label>
+            <input type="range" id="photoPersp" min="0" max="0.25" step="0.01" value="0.05">
+            <label>Размер листа: <span id="v_photoScale" class="val-disp">0.78</span></label>
+            <input type="range" id="photoScale" min="0.5" max="0.95" step="0.01" value="0.78">
+            <div class="row">
+                <div class="col"><label>Сдвиг X:</label><input type="range" id="photoDx" min="-400" max="400" step="5" value="0"></div>
+                <div class="col"><label>Сдвиг Y:</label><input type="range" id="photoDy" min="-500" max="500" step="5" value="0"></div>
+            </div>
+        </div>
+
+        <div class="sub-group">
+            <span class="sub-title">СВЕТ И ПЛЁНКА</span>
+            <label>Тень листа: <span id="v_photoShadow" class="val-disp">0.45</span></label>
+            <input type="range" id="photoShadow" min="0" max="1" step="0.01" value="0.45">
+            <label>Тёплый свет: <span id="v_photoLight" class="val-disp">0.35</span></label>
+            <input type="range" id="photoLight" min="0" max="1" step="0.01" value="0.35">
+            <label>Зерно / шум: <span id="v_photoNoise" class="val-disp">0.4</span></label>
+            <input type="range" id="photoNoise" min="0" max="1" step="0.01" value="0.4">
+            <label>Разрешение</label>
+            <select id="photoRes" style="width:100%;padding:5px;margin-bottom:6px;">
+                <option value="12">12 МП — 3024×4032</option>
+                <option value="8" selected>8 МП — 2448×3264</option>
+                <option value="4">4 МП — 1728×2304 (быстро)</option>
+            </select>
+        </div>
+
+        <button id="photoBtn" class="action-btn">📸 Скачать фото страницы (JPG)</button>
+        <div id="photoStatus"></div>
+    </div>
+
+    <button id="generateBtn" class="action-btn">ОБНОВИТЬ</button>
+    <label style="margin-top:5px; font-size:0.8rem;"><input type="checkbox" id="autoUpdate" checked> Авто-обновление</label>
+
+    <div style="border-top: 2px solid #ddd; margin-top: 15px; padding-top: 10px;">
+        <button id="downloadCurrentBtn" class="action-btn" style="background:#17a2b8">Скачать ЭТУ страницу (SVG)</button>
+        <button id="downloadAllBtn" class="action-btn btn-download">Скачать ВСЕ (ZIP)</button>
+    </div>
+</div>
+
+<div class="toolbar">
+    <div style="text-align:center;">
+        <input type="color" id="drawColor" value="#ff0000" style="width:40px; height:30px; border:none; padding:0; cursor:pointer;">
+        <label style="font-size:0.65rem; margin-top:3px; line-height:1;"><input type="checkbox" id="useTextColor" checked>Цвет<br>текста</label>
+    </div>
+    <div class="divider"></div>
+    <div class="tool-group"><div class="tool-btn" id="tool-pencil">✏️</div><div class="tool-label">Карандаш</div></div>
+    <div class="tool-group"><div class="tool-btn" id="tool-marker">🖍️</div><div class="tool-label">Маркер</div></div>
+    <div class="tool-group"><div class="tool-btn" id="tool-eraser">🧽</div><div class="tool-label">Ластик</div></div>
+    <div class="divider"></div>
+    <div style="width:100%; text-align:center;"><label style="font-size:0.7rem;">Толщина</label><input type="range" id="toolSize" min="1" max="20" value="2" style="width:50px;"></div>
+    <button id="clearDrawingsBtn" style="background:#d9534f; color:white; border:none; border-radius:4px; padding:5px; font-size:0.7rem; margin-top:10px; cursor:pointer;">Очистить<br>стр.</button>
+</div>
+
+<div class="main-content">
+    <div class="canvas-wrapper" id="canvasContainer">
+        <div id="previewContainer"></div>
+        <canvas id="interactionLayer"></canvas>
+    </div>
+    <canvas id="measureCanvas" style="display:none;"></canvas>
+    <div class="pagination-controls">
+        <button class="pag-btn" id="prevPageBtn">←</button>
+        <span class="page-info" id="pageInfo">Стр. 1</span>
+        <button class="pag-btn" id="nextPageBtn">→</button>
+    </div>
+</div>
+
+<script>
+    // --- Constants ---
+    const PPI = 96; 
+    const MM_TO_PX = PPI / 25.4;
+    const PAGE_WIDTH_MM = 210;
+    const PAGE_HEIGHT_MM = 297;
+    const PAGE_WIDTH_PX = 794; 
+    const PAGE_HEIGHT_PX = 1123;
+    const RUSSIAN_CHARS = "абвгдеёжзийклмнопрстуфхцчшщъыьэюя";
+    const DEFAULT_FONT = 'Arial';
+    const HOLE_RADIUS_PX = 3 * MM_TO_PX;
+
+    // --- State ---
+    let generatedSVGs = []; 
+    let pageStrokes = {}; 
+    let currentPageIndex = 0;
+    let loadedFonts = []; 
+    let fontBase64 = {};
+    // Координаты отверстий теперь обновляются из инпутов
+    let holes = [
+        { x: 15 * MM_TO_PX, y: 30 * MM_TO_PX },
+        { x: 15 * MM_TO_PX, y: 110 * MM_TO_PX },
+        { x: 15 * MM_TO_PX, y: 190 * MM_TO_PX },
+        { x: 15 * MM_TO_PX, y: 270 * MM_TO_PX }
+    ];
+    let activeTool = null; 
+    let isDrawing = false;
+    let currentStroke = null;
+    let isDraggingHole = false;
+    let draggedHoleIndex = -1;
+
+    // --- Helpers (Safe Parsing) ---
+    function getVal(id) { const el = document.getElementById(id); return el ? parseFloat(el.value) || 0 : 0; }
+    function getMm(id) { 
+        const el = document.getElementById(id); 
+        if(!el) return 0;
+        let v = el.value; 
+        if(typeof v === 'string') v = v.replace(',', '.');
+        return parseFloat(v) || 0; 
+    }
+    function mmToPx(mm) { return mm * MM_TO_PX; }
+    function pxToMm(px) { return px / MM_TO_PX; }
+    function randomFloat(min, max) { return Math.random() * (max - min) + min; }
+    function getRandomFont() { return loadedFonts.length > 0 ? loadedFonts[Math.floor(Math.random() * loadedFonts.length)] : DEFAULT_FONT; }
+    function escapeHtml(text) { return text ? text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") : ""; }
+    function updateVal(id, val) { const el = document.getElementById('v_' + id); if(el) el.innerText = val; }
+
+    // Функция синхронизации: Инпуты -> Массив отверстий
+    function syncHolesFromInputs() {
+        for(let i=0; i<4; i++) {
+            let xMm = getMm(`hole${i+1}x`);
+            let yMm = getMm(`hole${i+1}y`);
+            holes[i].x = mmToPx(xMm);
+            holes[i].y = mmToPx(yMm);
+        }
+    }
+
+    // --- Text Expansion ---
+    const textInput = document.getElementById('textInput');
+    const textExpanded = document.getElementById('textInputExpanded');
+    const overlay = document.getElementById('expandedOverlay');
+    textInput.addEventListener('input', () => { textExpanded.value = textInput.value; if(document.getElementById('autoUpdate').checked) renderAll(); });
+    textExpanded.addEventListener('input', () => { textInput.value = textExpanded.value; });
+    document.getElementById('expandTextBtn').addEventListener('click', () => { textExpanded.value = textInput.value; overlay.classList.add('active'); });
+    document.getElementById('closeExpandBtn').addEventListener('click', () => { overlay.classList.remove('active'); textInput.value = textExpanded.value; renderAll(); });
+
+    // --- Fonts ---
+    function loadFont(file, index) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const fontName = `HF${index}`;
+            const fontFace = new FontFace(fontName, e.target.result);
+            fontFace.load().then(f => {
+                document.fonts.add(f);
+                if(!loadedFonts.includes(fontName)) loadedFonts.push(fontName);
+                let binary = '';
+                const bytes = new Uint8Array(e.target.result);
+                for (let i=0; i<bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+                fontBase64[fontName] = window.btoa(binary);
+                renderAll();
+            });
+        };
+        reader.readAsArrayBuffer(file);
+    }
+    ['fontFile1','fontFile2','fontFile3','fontFile4'].forEach((id, i) => {
+        document.getElementById(id).addEventListener('change', (e) => { if(e.target.files[0]) loadFont(e.target.files[0], i); });
+    });
+
+    // --- Interaction ---
+    const interactionCanvas = document.getElementById('interactionLayer');
+    const wrapper = document.getElementById('canvasContainer');
+    
+    function initCanvas() {
+        interactionCanvas.width = PAGE_WIDTH_PX;
+        interactionCanvas.height = PAGE_HEIGHT_PX;
+    }
+    initCanvas();
+
+    function getMousePos(evt) {
+        const rect = interactionCanvas.getBoundingClientRect();
+        const scaleX = interactionCanvas.width / rect.width;
+        const scaleY = interactionCanvas.height / rect.height;
+        return { x: (evt.clientX - rect.left) * scaleX, y: (evt.clientY - rect.top) * scaleY };
+    }
+
+    interactionCanvas.addEventListener('mousedown', (e) => {
+        const pos = getMousePos(e);
+        if (activeTool) {
+            isDrawing = true;
+            let color = document.getElementById('useTextColor').checked ? document.getElementById('textColor').value : document.getElementById('drawColor').value;
+            let size = getVal('toolSize');
+            currentStroke = { tool: activeTool, color: color, size: size, points: [{x: pos.x, y: pos.y}] };
+            const ctx = interactionCanvas.getContext('2d'); ctx.fillStyle = color; ctx.beginPath(); ctx.arc(pos.x, pos.y, size/2, 0, Math.PI*2); ctx.fill();
+        } else if (document.getElementById('showHolesCheck').checked) {
+            for (let i = 0; i < holes.length; i++) {
+                const hPos = getHolePosForPage(i, currentPageIndex);
+                if ((pos.x - hPos.x)**2 + (pos.y - hPos.y)**2 < (HOLE_RADIUS_PX * 4)**2) {
+                    isDraggingHole = true; draggedHoleIndex = i; wrapper.style.cursor = 'move'; break;
+                }
+            }
+        }
+    });
+
+    interactionCanvas.addEventListener('mousemove', (e) => {
+        const pos = getMousePos(e);
+        if (isDrawing && activeTool) {
+            currentStroke.points.push(pos);
+            const ctx = interactionCanvas.getContext('2d'); ctx.strokeStyle = currentStroke.color; ctx.lineWidth = currentStroke.size; ctx.lineCap='round'; ctx.beginPath(); 
+            const pts = currentStroke.points; if(pts.length>1) { ctx.moveTo(pts[pts.length-2].x, pts[pts.length-2].y); ctx.lineTo(pos.x, pos.y); ctx.stroke(); }
+        } else if (isDraggingHole) {
+            const mirror = document.getElementById('mirrorHolesCheck').checked;
+            const isEven = (currentPageIndex % 2 !== 0);
+            
+            // Логика перемещения: обновляем массив holes
+            let baseX = pos.x;
+            if(mirror && isEven) baseX = PAGE_WIDTH_PX - pos.x;
+            holes[draggedHoleIndex].x = baseX; 
+            holes[draggedHoleIndex].y = pos.y;
+
+            // Логика UI: обновляем инпуты в реальном времени
+            const xVal = pxToMm(baseX).toFixed(1);
+            const yVal = pxToMm(pos.y).toFixed(1);
+            document.getElementById(`hole${draggedHoleIndex+1}x`).value = xVal;
+            document.getElementById(`hole${draggedHoleIndex+1}y`).value = yVal;
+
+            renderAll(); 
+        }
+    });
+
+    interactionCanvas.addEventListener('mouseup', () => {
+        if(isDrawing && currentStroke) { isDrawing = false; if(!pageStrokes[currentPageIndex]) pageStrokes[currentPageIndex] = []; pageStrokes[currentPageIndex].push(currentStroke); currentStroke = null; renderAll(); }
+        if(isDraggingHole) { isDraggingHole = false; wrapper.style.cursor = 'default'; renderAll(); }
+        const ctx = interactionCanvas.getContext('2d'); ctx.clearRect(0,0, PAGE_WIDTH_PX, PAGE_HEIGHT_PX);
+    });
+    
+    document.getElementById('clearDrawingsBtn').addEventListener('click', () => { if(confirm('Очистить рисунки?')) { pageStrokes[currentPageIndex] = []; renderAll(); } });
+
+    // --- MAIN RENDER LOGIC ---
+    function generateSVGs() {
+        // Сначала синхронизируем данные отверстий (если пользователь ввел цифры руками)
+        if(!isDraggingHole) syncHolesFromInputs();
+
+        generatedSVGs = [];
+        opInkReset();   // перо в начале листа полное, дальше высыхает по волне
+        const text = document.getElementById('textInput').value || "";
+        
+        // Params
+        const mainColor = document.getElementById('textColor').value;
+        let fontSize = parseInt(document.getElementById('fontSize').value) || 24;
+        const lineHeight = mmToPx(getMm('lineHeightMm'));
+        const letterSpacing = getVal('letterSpacing');
+        const limitW = mmToPx(getMm('textWidthMm'));
+        
+        const mCtx = document.getElementById('measureCanvas').getContext('2d');
+
+        // Margins
+        const mTop = mmToPx(getMm('marginTopMm'));
+        const mBot = mmToPx(getMm('marginBottomMm'));
+        const mLeft = mmToPx(getMm('marginLeftMm'));
+        const mLeftEven = mmToPx(getMm('marginLeftEvenMm'));
+
+        /* --- Посадка строк в клетку ------------------------------------
+           Человек пишет букву ВНУТРИ клетки, нижним краем у нижней линии.
+           Поэтому: шаг строки = целое число клеток, а базовая линия строки
+           садится на «нижняя линия клетки − подъём», а не в произвольную
+           точку между линиями (как было раньше: 25 + 6.35 + 9n).          */
+        const cellWpx = mmToPx(getMm('gridW'));
+        const cellHpx = mmToPx(getMm('gridH'));
+        const liftPx = mmToPx(getMm('cellLiftMm'));
+        const offXpx = mmToPx(getMm('gridOffsetXMm'));   // сдвиг всей сетки по листу
+        const offYpx = mmToPx(getMm('gridOffsetYMm'));
+        const snapOn = document.getElementById('cellSnapCheck').checked && cellHpx > 2;
+        const indentPx = mmToPx(getMm('lineIndentMm'));
+        const jumpPx = mmToPx(getMm('lineJumpMaxMm'));
+
+        let cellsPerRow = 1;
+        if (snapOn) {
+            const sel = document.getElementById('cellsPerRowSel');
+            const selV = sel ? sel.value : 'auto';
+            cellsPerRow = (selV === 'auto')
+                ? Math.max(1, Math.round(lineHeight / cellHpx))
+                : Math.max(1, parseInt(selV) || 1);
+            if (document.getElementById('cellFitCheck').checked) {
+                // видимая высота буквы ≈ 0.75em — вписываем её в клетку с запасом 0.8 мм
+                const maxFs = (cellHpx - mmToPx(0.8)) / 0.75;
+                if (fontSize > maxFs) fontSize = Math.max(8, Math.round(maxFs));
+            }
+        }
+        const lineStep = snapOn ? cellsPerRow * cellHpx : lineHeight;
+        // линия сетки, лежащая ниже верхнего поля (с учётом сдвига сетки по листу)
+        const latticeBelow = (y) => offYpx + cellHpx * (Math.floor((y - offYpx) / cellHpx + 1e-9) + 1);
+        const firstBase = snapOn ? (latticeBelow(mTop) - liftPx) : (mTop + fontSize);
+        // пределы «дрожания»: буква не должна уползать из своей клетки
+        const upMax = snapOn ? Math.max(0, cellHpx - fontSize * 0.75) * 0.5 : Infinity;
+        const downMax = snapOn ? liftPx * 0.9 : Infinity; // ниже линии клетки не опускаемся
+        const jLine = (r) => snapOn ? Math.max(-upMax * 0.6, Math.min(downMax * 0.6, r)) : r;
+        const jChar = (r) => snapOn ? Math.max(-upMax * 0.4, Math.min(downMax * 0.4, r)) : r;
+
+        // фоторежим рисует разлиновку по этой же сетке (см. drawRuling)
+        window.__hwLayout = { snap: snapOn, cellW: cellWpx, cellH: cellHpx, step: lineStep,
+                              lift: liftPx, firstBase: firstBase, fs: fontSize, cellsPerRow: cellsPerRow,
+                              offX: offXpx, offY: offYpx };
+
+        let pIdx = 0;
+        let svgContent = [];
+        let curX = mLeft;
+        let curY = firstBase;
+
+        const pushPage = () => { generatedSVGs.push(buildFullSVG(svgContent, pIdx)); pIdx++; svgContent = []; curX = (pIdx%2!==0)? mLeftEven : mLeft; curY = firstBase; };
+
+        // ─── Плавный нажим ───────────────────────────────────────────────────
+        // Раньше толщина выбиралась заново для каждой буквы (randomFloat(pMin,pMax)),
+        // поэтому соседние буквы прыгали «тонкая → жирная → тонкая». Человек так не
+        // пишет: он ведёт нажим плавно. Поэтому уровень нажима — медленная волна,
+        // которая интерполируется между редкими случайными «опорными точками»
+        // (smoothstep: производная на стыках = 0, значит скачков нет вообще),
+        // а поверх неё — разгон в начале предложения и затухание в конце.
+        const pressOn = document.getElementById('pressureCheck').checked;
+        const prMin = getVal('pressureMin'), prMax = getVal('pressureMax');
+        const prMid = prMin + (prMax - prMin) * 0.42;      // средний нажим
+        const prAmp = (prMax - prMin) * 0.42;              // размах медленной волны
+        const prSmooth = Math.min(1, Math.max(0, getVal('pressureSmooth') / 100));
+        const prSegLen = () => Math.round(5 + 20 * prSmooth) + Math.floor(Math.random() * 3); // 5..25 букв на сегмент
+        // Максимальное изменение нажима между соседними буквами — «ограничитель скорости».
+        // Именно он гарантирует, что резкого перепада «тонкая → жирная» не будет.
+        const prStep = prAmp * (0.55 - 0.42 * prSmooth);
+        let prA = randomFloat(-1, 1), prB = randomFloat(-1, 1), prSeg = prSegLen(), prT = 0;
+        let prPrev = null;
+
+        function prNext(mult) {
+            if (!pressOn) return 0;
+            const s = (prT / prSeg); const e = s * s * (3 - 2 * s);   // smoothstep 0..1
+            const lvl = prA + (prB - prA) * e;
+            if (++prT >= prSeg) { prT = 0; prA = prB; prB = randomFloat(-1, 1); prSeg = prSegLen(); }
+            const grain = (Math.random() - 0.5) * prAmp * 0.08;        // микро-дрожь, не «прыжок»
+            let v = (prMid + prAmp * lvl + grain) * (mult == null ? 1 : mult);
+            v = Math.max(prMin, Math.min(prMax, v));
+            if (prPrev != null) v = Math.max(prPrev - prStep, Math.min(prPrev + prStep, v));
+            prPrev = v;
+            return v;
+        }
+
+        // Множители «разгон в начале / затухание в конце» по символам строки (1 = обычный нажим)
+        function prRamps(lineStr) {
+            const n = lineStr.length, f = new Float64Array(n).fill(1);
+            if (!pressOn || n === 0) return f;
+            const ss = (t) => { t = Math.min(1, Math.max(0, t)); return t * t * (3 - 2 * t); };
+            const isEnd = (c) => /[.!?…;:]/.test(c);
+
+            // начало КАЖДОГО предложения: первые буквы тоньше, дальше плавный разгон
+            // (так происходит не всегда — отсюда вариативность)
+            const starts = [0];
+            for (let i = 0; i < n; i++) if (isEnd(lineStr[i])) starts.push(i + 1);
+            for (const s0 of starts) {
+                if (s0 >= n || Math.random() > 0.8) continue;
+                const len = 2 + Math.floor(Math.random() * 4);       // 2..5 букв
+                const depth = randomFloat(0.15, 0.32);
+                let k = 0;
+                for (let i = s0; i < n && k < len; i++) {
+                    if (lineStr[i] === ' ') continue;                // пробел не тратит разгон
+                    f[i] *= 1 - depth * (1 - ss(k / len));
+                    k++;
+                }
+            }
+            // конец предложения: знак препинания — самый тонкий, буквы перед ним плавно тоньше
+            for (let i = 0; i < n; i++) {
+                if (!isEnd(lineStr[i]) || Math.random() > 0.7) continue;
+                const len = 2 + Math.floor(Math.random() * 3);       // 2..4 буквы
+                const depth = randomFloat(0.10, 0.24);
+                f[i] *= 1 - depth;
+                let k = 1;
+                for (let j = i - 1; j >= 0 && k <= len; j--) {
+                    if (lineStr[j] === ' ') break;                   // не тянем через пробел
+                    f[j] *= 1 - depth * (1 - ss(k / (len + 1)));
+                    k++;
+                }
+            }
+            return f;
+        }
+
+        const lines = text.split('\n');
+        for(let l=0; l<lines.length; l++) {
+            let lineStr = lines[l];
+            let lineYOffset = jLine(randomFloat(-jumpPx, jumpPx));
+            // абзацный отступ тоже кратен клеткам, иначе строка начинается «между» столбцов
+            curX += snapOn ? Math.round(randomFloat(0, indentPx) / cellWpx) * cellWpx : randomFloat(0, indentPx);
+
+            if(lineStr === '') { 
+                curY += lineStep; 
+                if(curY > PAGE_HEIGHT_PX - mBot) pushPage();
+                curX = (pIdx%2!==0)? mLeftEven : mLeft;
+                continue; 
+            }
+
+            // слова вместе с их позицией в строке — нужна для множителей нажима
+            const words = []; { const reW = /\S+/g; let mW; while((mW = reW.exec(lineStr)) !== null) words.push({ t: mW[0], at: mW.index }); }
+            const pF = prRamps(lineStr);
+            for(let w=0; w<words.length; w++) {
+                const word = words[w].t, wordAt = words[w].at; if(word === '') continue;
+                
+                const buffer = 1;
+                
+                // ИСПРАВЛЕНИЕ: Выбор стека шрифтов для измерения
+                // Если есть пользовательские шрифты, используем только их. Если нет - фаллбэк на Arial.
+                const fallbackStack = (loadedFonts.length > 0) ? "" : `, ${DEFAULT_FONT}`;
+                const testFont = (loadedFonts.length > 0) ? loadedFonts[0] : DEFAULT_FONT;
+                
+                mCtx.font = `${fontSize}px "${testFont}"${fallbackStack}`; 
+                const wWidthApprox = mCtx.measureText(word).width + (word.length * (letterSpacing + buffer));
+                
+                const pageLeft = (pIdx%2!==0)? mLeftEven : mLeft;
+
+                // Wrap
+                if (curX + wWidthApprox > pageLeft + limitW) { 
+                    curX = pageLeft; curY += lineStep; 
+                    lineYOffset = jLine(randomFloat(-jumpPx, jumpPx));
+                    if(curY > PAGE_HEIGHT_PX - mBot) pushPage();
+                }
+
+                // Holes
+                let nextX = avoidHoles(curX, curY+lineYOffset, wWidthApprox, pIdx, fontSize);
+                if(nextX !== curX) {
+                    curX = nextX;
+                    if(curX + wWidthApprox > pageLeft + limitW) {
+                        curX = pageLeft; curY += lineHeight;
+                        if(curY > PAGE_HEIGHT_PX - mBot) pushPage();
+                        curX = avoidHoles(curX, curY+lineYOffset, wWidthApprox, pIdx, fontSize);
+                    }
+                }
+
+                // Mistake Word
+                if (getVal('mistakeWordProb')/100 > 0 && Math.random() < getVal('mistakeWordProb')/100) {
+                    const startX = curX;
+                    for(let c=0; c<word.length; c++) {
+                        const font = getRandomFont();
+                        // Учитываем эксклюзивность шрифтов в замерах
+                        const fb = (loadedFonts.length > 0) ? "" : `, ${DEFAULT_FONT}`;
+                        mCtx.font = `${fontSize}px "${font}"${fb}`;
+                        
+                        const charW = mCtx.measureText(word[c]).width;
+                        svgContent.push(createSVGText(word[c], curX, curY+lineYOffset, mainColor, fontSize, font, 0));
+                        curX += charW + letterSpacing;
+                    }
+                    svgContent.push(createSVGStrike(startX, curY+lineYOffset, curX-startX, fontSize, mainColor));
+                    curX += fontSize*0.4;
+                    let nx = avoidHoles(curX, curY+lineYOffset, 10, pIdx, fontSize); if(nx!==curX) curX=nx;
+                }
+
+                // Letters (Normal Drawing)
+                for(let c=0; c<word.length; c++) {
+                    const char = word[c];
+                    const useP = pressOn;
+                    const pMin = prMin; const pMax = prMax;
+                    // плавный нажим: медленная волна × разгон/затухание предложения
+                    const pW = prNext(pF[wordAt + c]);
+
+                    if(getVal('mistakeLetterProb')/100 > 0 && Math.random() < getVal('mistakeLetterProb')/100) {
+                        const wChar = RUSSIAN_CHARS[Math.floor(Math.random()*RUSSIAN_CHARS.length)] || 'x';
+                        const wFont = getRandomFont();
+                        const fb = (loadedFonts.length > 0) ? "" : `, ${DEFAULT_FONT}`;
+                        mCtx.font = `${fontSize}px "${wFont}"${fb}`;
+                        const wcW = mCtx.measureText(wChar).width;
+                        
+                        svgContent.push(createSVGText(wChar, curX, curY+lineYOffset, mainColor, fontSize, wFont, 0, useP, pMin, pMax, pW));
+                        svgContent.push(`<path d="M ${curX} ${curY+lineYOffset-fontSize*0.3} L ${curX+wcW} ${curY+lineYOffset-fontSize*0.3}" stroke="${mainColor}" stroke-width="1.5" fill="none"/>`);
+                        
+                        const cFont = getRandomFont();
+                        mCtx.font = `${fontSize}px "${cFont}"${fb}`;
+                        const cW = mCtx.measureText(char).width;
+                        
+                        svgContent.push(createSVGText(char, curX + wcW + 2, curY+lineYOffset-fontSize*0.2, mainColor, fontSize, cFont, 0, useP, pMin, pMax, pW * 0.92));
+                        curX += wcW + cW + letterSpacing + buffer + 2;
+                    } else {
+                        const font = getRandomFont();
+                        
+                        // ИСПРАВЛЕНИЕ 1: Strict Fonts Measurement
+                        const fb = (loadedFonts.length > 0) ? "" : `, ${DEFAULT_FONT}`;
+                        mCtx.font = `${fontSize}px "${font}"${fb}`;
+                        
+                        const exactCharWidth = mCtx.measureText(char).width;
+
+                        const rot = (Math.random() < getVal('angleProb')/100) ? randomFloat(getVal('angleMin'), getVal('angleMax')) : 0;
+                        const yS = (Math.random() < getVal('yProb')/100) ? jChar(randomFloat(mmToPx(getMm('yMinMm')), mmToPx(getMm('yMaxMm')))) : 0;
+                        
+                        svgContent.push(createSVGText(char, curX, curY+lineYOffset+yS, mainColor, fontSize, font, rot, useP, pMin, pMax, pW));
+                        
+                        curX += exactCharWidth + letterSpacing;
+                    }
+                }
+                
+                // Space
+                let spaceW = mmToPx(getMm('spaceMinMm'));
+                if(document.getElementById('spaceRandomCheck').checked) spaceW = randomFloat(spaceW, mmToPx(getMm('spaceMaxMm')));
+                curX += spaceW;
+            }
+            curY += lineStep;
+            if(curY > PAGE_HEIGHT_PX - mBot) pushPage();
+            curX = (pIdx%2!==0)? mLeftEven : mLeft;
+        }
+        
+        // Подсказка о фактической посадке строк
+        const hintEl = document.getElementById('cellHint');
+        if (hintEl) {
+            if (!snapOn) {
+                hintEl.innerText = 'Выкл.: строки идут по «Межстрочный», линии клетки не учитываются.';
+            } else {
+                hintEl.innerText = 'Шаг строки: ' + cellsPerRow + ' кл. = ' + (lineStep / MM_TO_PX).toFixed(1)
+                    + ' мм · буква ≈ ' + (fontSize * 0.75 / MM_TO_PX).toFixed(1)
+                    + ' мм · первая строка на ' + (firstBase / MM_TO_PX).toFixed(1)
+                    + ' мм · нижняя линия ' + ((firstBase + liftPx) / MM_TO_PX).toFixed(1) + ' мм'
+                    + ((offXpx || offYpx) ? ' · сдвиг сетки ' + (offXpx / MM_TO_PX).toFixed(1) + '/' + (offYpx / MM_TO_PX).toFixed(1) + ' мм' : '');
+            }
+        }
+
+        generatedSVGs.push(buildFullSVG(svgContent, pIdx));
+        displayPreview(currentPageIndex);
+    }
+
+    // ─── Прозрачность «подсохшего пера» ─────────────────────────────────
+    // Ручка высыхает НЕ по буквам, а постепенно: буква 1 чуть бледнее, 2 ещё
+    // чуть, 3 ещё — несколько букв подряд, пока перо не «подпитается» и так же
+    // плавно не вернётся к полному нажиму. Поэтому сухость пера — это медленная
+    // волна (smoothstep между случайными узлами + ограничение скорости), а не
+    // случайное число на каждую букву.
+    // Ползунок вариативности: 0 % — прозрачности нет вообще,
+    // 100 % — бледнеют все буквы на странице.
+    let opDrySegLen = 0, opDryT = 0, opDryFrom = 0, opDryTo = 0, opDryNow = 0;
+    let opInkNow = 1;   // фактическая прозрачность предыдущей буквы (для плавности)
+
+    function opInkReset() {
+        opDrySegLen = 0; opDryT = 0; opDryFrom = 0; opDryTo = 0; opDryNow = 0;
+        opInkNow = 1;
+    }
+
+    // Значение «сухости» пера для следующей буквы: 0 — перо полное,
+    // 1 — высохло максимально. Меняется плавно, без скачков.
+    function opDryness() {
+        if (opDrySegLen <= 0 || opDryT >= opDrySegLen) {
+            // новый отрезок письма: иногда начинается высыхание, потом возврат
+            opDrySegLen = 6 + Math.floor(Math.random() * 9);   // 6..14 букв
+            opDryFrom = opDryNow;                              // старт — с текущего уровня
+            opDryT = 0;
+            if (Math.random() < 0.35) opDryTo = randomFloat(0.55, 1.0); // сухое пятно
+            else                      opDryTo = randomFloat(0.0, 0.30); // обычное письмо
+        }
+        const t = opDryT / Math.max(1, opDrySegLen);
+        opDryT++;
+        const s = t * t * (3 - 2 * t);                          // smoothstep
+        let val = opDryFrom + (opDryTo - opDryFrom) * s;
+        // ограничение скорости: перо сохнет постепенно, а не скачком
+        const maxStep = 0.12;
+        val = Math.max(opDryNow - maxStep, Math.min(opDryNow + maxStep, val));
+        opDryNow = val;
+        return val;
+    }
+
+    function inkOpacity(w, pMin, pMax) {
+        const el = document.getElementById('opacityCheck');
+        if (!el || !el.checked) return 1;
+        const v = Math.min(1, Math.max(0, getVal('opacityVar') / 100));
+        if (v <= 0) return 1;
+        // если границы нажима не переданы — берём стандартные
+        if (!isFinite(pMin)) pMin = 0.1;
+        if (!isFinite(pMax)) pMax = 1.2;
+        if (pMax <= pMin) return 1;
+        // thin: 1 — самая тонкая буква, 0 — самая жирная
+        const span = Math.max(1e-6, pMax - pMin);
+        const ww = isFinite(w) ? w : (pMin + pMax) / 2;
+        const thin = Math.max(0, Math.min(1, (pMax - ww) / span));
+        // медленная волна высыхания + совсем небольшая зернистость бумаги
+        const dry = opDryness() * randomFloat(0.98, 1.02);
+        // «сухость» усиливает бледность (и заметно — на тонких буквах). Постоянная
+        // составляющая растёт как v²: на малых значениях ползунка она почти не
+        // видна, а на максимуме бледнеют ВСЕ буквы, даже самые жирные.
+        let target = 1 - (v * v * (0.05 + 0.32 * thin)
+                          + v * (0.10 + 0.30 * (0.35 + 0.65 * thin)) * dry);
+        // страховка: соседние буквы не могут отличаться по прозрачности сильнее
+        // шага — иначе снова получаются «провалы» между буквами
+        const maxJump = 0.015 + 0.05 * v;
+        target = Math.max(opInkNow - maxJump, Math.min(opInkNow + maxJump, target));
+        // пол: буква не должна исчезнуть совсем
+        opInkNow = Math.max(0.35, Math.min(1, target));
+        return opInkNow;
+    }
+
+    // pW — уже посчитанная толщина (плавная волна нажима). Если не передана,
+    // ведём себя как раньше: случайный нажим на каждую букву.
+    function createSVGText(text, x, y, color, size, font, rot, useP, pMin, pMax, pW) {
+        if(isNaN(x) || isNaN(y)) x = 0;
+        let stroke = "";
+        const w = (pW != null && pW > 0) ? pW : randomFloat(pMin, pMax);
+        if(useP) {
+            if(w>0.05) stroke = `stroke="${color}" stroke-width="${w.toFixed(2)}px" stroke-linecap="round" stroke-linejoin="round"`;
+        }
+        // прозрачность: считаем от фактической толщины буквы
+        const op = inkOpacity(useP ? w : null, pMin, pMax);
+        // пишем атрибут только когда бледность реально заметна (>= 2 %)
+        const opAttr = (op < 0.98) ? ` opacity="${op.toFixed(2)}"` : "";
+        
+        // ИСПРАВЛЕНИЕ 2: Strict Fonts SVG Generation
+        // Если загружены кастомные шрифты -> font-family="CustomFontName" (И ВСЁ!)
+        // Если нет -> font-family="Arial, sans-serif"
+        let fontStack = "";
+        if (loadedFonts.length > 0) {
+            fontStack = `"${font}"`; 
+        } else {
+            fontStack = `"${font}", Arial, sans-serif`;
+        }
+
+        return `<text x="0" y="0" fill="${color}" ${stroke}${opAttr} font-family='${fontStack}' font-size="${size}px" transform="translate(${x},${y}) rotate(${rot})">${escapeHtml(text)}</text>`;
+    }
+    
+    function createSVGStrike(x, y, w, size, color) {
+        let d = `M ${x} ${y-size*0.3} `;
+        for(let i=0; i<3; i++) d += `L ${x+w+randomFloat(-2,2)} ${y-size*0.3+randomFloat(-2,2)} `;
+        return `<path d="${d}" stroke="${color}" stroke-width="1.5" fill="none"/>`;
+    }
+
+    function avoidHoles(x, y, w, pIdx, fs) {
+        if (!document.getElementById('showHolesCheck').checked) return x;
+        const textBot = y + fs*0.2; const textTop = y - fs;
+        for (let i=0; i<holes.length; i++) {
+            const h = getHolePosForPage(i, pIdx);
+            if (textBot > h.y - HOLE_RADIUS_PX - 8 && textTop < h.y + HOLE_RADIUS_PX + 8) {
+                if (x + w > h.x - HOLE_RADIUS_PX - 8 && x < h.x + HOLE_RADIUS_PX + 8) return h.x + HOLE_RADIUS_PX + 8;
+            }
+        }
+        return x;
+    }
+
+    function getHolePosForPage(i, pIdx) {
+        const base = holes[i];
+        if (document.getElementById('mirrorHolesCheck').checked && (pIdx % 2 !== 0)) return { x: PAGE_WIDTH_PX - base.x, y: base.y };
+        return base;
+    }
+
+    function buildFullSVG(content, pIdx) {
+        let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${PAGE_WIDTH_PX}px" height="${PAGE_HEIGHT_PX}px" viewBox="0 0 ${PAGE_WIDTH_PX} ${PAGE_HEIGHT_PX}">`;
+        svg += `<defs><style>`;
+        for(let f in fontBase64) svg += `@font-face { font-family: "${f}"; src: url(data:font/ttf;base64,${fontBase64[f]}) format('truetype'); } `;
+        svg += `</style></defs>`;
+        
+        // Grid (с учётом сдвига сетки по листу)
+        if(document.getElementById('showGridCheck').checked) {
+            const gw = mmToPx(getMm('gridW'))||50; const gh = mmToPx(getMm('gridH'))||50;
+            const ox = mmToPx(getMm('gridOffsetXMm'))||0; const oy = mmToPx(getMm('gridOffsetYMm'))||0;
+            let g = `<g stroke="#e0e0e0" stroke-width="1">`;
+            for(let x = ox + gw*Math.ceil((0.5-ox)/gw); x<PAGE_WIDTH_PX; x+=gw)
+                g+=`<line x1="${x.toFixed(2)}" y1="0" x2="${x.toFixed(2)}" y2="${PAGE_HEIGHT_PX}"/>`;
+            for(let y = oy + gh*Math.ceil((0.5-oy)/gh); y<PAGE_HEIGHT_PX; y+=gh)
+                g+=`<line x1="0" y1="${y.toFixed(2)}" x2="${PAGE_WIDTH_PX}" y2="${y.toFixed(2)}"/>`;
+            svg += g + `</g>`;
+        }
+        // Holes
+        if(document.getElementById('showHolesCheck').checked) {
+            let hStr = `<g fill="#333">`;
+            holes.forEach((h,i)=> { const p = getHolePosForPage(i, pIdx); hStr+=`<circle cx="${p.x}" cy="${p.y}" r="${HOLE_RADIUS_PX}"/>`; });
+            svg += hStr + `</g>`;
+        }
+        svg += content.join('');
+        // Strokes
+        if(pageStrokes[pIdx]) {
+            let sStr = `<g fill="none" stroke-linecap="round" stroke-linejoin="round">`;
+            pageStrokes[pIdx].forEach(s => {
+                let c = (s.tool==='eraser') ? '#ffffff' : s.color;
+                let w = (s.tool==='eraser') ? s.size*4 : s.size;
+                let op = (s.tool==='marker') ? 0.5 : 1;
+                let d = ""; if(s.points.length>0) { d=`M ${s.points[0].x} ${s.points[0].y} `; for(let k=1; k<s.points.length; k++) d+=`L ${s.points[k].x} ${s.points[k].y} `; }
+                sStr += `<path d="${d}" stroke="${c}" stroke-width="${w}" opacity="${op}"/>`;
+            });
+            svg += sStr + `</g>`;
+        }
+        return svg + `</svg>`;
+    }
+
+    function displayPreview(idx) {
+        if(generatedSVGs.length === 0) return;
+        if(idx>=generatedSVGs.length) idx=generatedSVGs.length-1; if(idx<0) idx=0; currentPageIndex = idx;
+        document.getElementById('pageInfo').innerText = `Стр. ${idx+1} из ${generatedSVGs.length}`;
+        document.getElementById('previewContainer').innerHTML = generatedSVGs[idx];
+    }
+    document.getElementById('prevPageBtn').onclick = () => displayPreview(currentPageIndex-1);
+    document.getElementById('nextPageBtn').onclick = () => displayPreview(currentPageIndex+1);
+
+    function getDownloadSVG(idx) {
+        const doc = new DOMParser().parseFromString(generatedSVGs[idx], "image/svg+xml");
+        if(!document.getElementById('printGridCheck').checked) doc.querySelectorAll('g[stroke="#e0e0e0"]').forEach(g=>g.remove());
+        if(!document.getElementById('printHolesCheck').checked) doc.querySelectorAll('g[fill="#333"]').forEach(g=>g.remove());
+        return new XMLSerializer().serializeToString(doc);
+    }
+    document.getElementById('downloadCurrentBtn').onclick = () => { if(generatedSVGs[currentPageIndex]) saveAs(new Blob([getDownloadSVG(currentPageIndex)], {type:"image/svg+xml;charset=utf-8"}), `page_${currentPageIndex+1}.svg`); };
+    document.getElementById('downloadAllBtn').onclick = () => { if(generatedSVGs.length>0) { const z=new JSZip(); generatedSVGs.forEach((_,i)=>z.file(`${i+1}.svg`, getDownloadSVG(i))); z.generateAsync({type:"blob"}).then(c=>saveAs(c,"handwriting.zip")); } };
+
+    // --- Init & Auto-Update Logic ---
+    
+    // ИСПРАВЛЕНИЕ 3: Собираем ВСЕ инпуты автоматически и вешаем слушатель
+    function attachAutoUpdate() {
+        // Находим все input и select в sidebar
+        const allInputs = document.querySelectorAll('.sidebar input, .sidebar select');
+        allInputs.forEach(el => {
+            // Пропускаем загрузку файлов (у них свой обработчик)
+            if(el.type === 'file') return;
+            
+            // Определяем событие
+            let eventType = (el.type === 'range' || el.type === 'color') ? 'input' : 'change';
+            if(el.type === 'text' || el.type === 'number') eventType = 'input'; // Для текстовых полей лучше input для реал-тайма
+
+            el.addEventListener(eventType, (e) => {
+                // Обновляем визуальные значения слайдеров (v_...)
+                let potentialDispId = 'v_' + el.id;
+                // Маппинг для сложных ID
+                if(el.id==='pressureSmooth') potentialDispId = 'v_psmooth';
+                else if(el.id.startsWith('pressure')) potentialDispId = 'v_' + (el.id.endsWith('Min')?'pmin':'pmax');
+                else if(el.id==='fontSize') potentialDispId = 'v_fs';
+                else if(el.id==='letterSpacing') potentialDispId = 'v_kern';
+                else if(el.id.startsWith('line')) potentialDispId = 'v_' + (el.id.includes('Jump')?'ljump':'lind');
+                else if(el.id==='angleProb') potentialDispId = 'v_afreq';
+                else if(el.id==='yProb') potentialDispId = 'v_yfreq';
+                else if(el.id.startsWith('mistake')) potentialDispId = 'v_' + (el.id.includes('Word')?'werr':'merr');
+                
+                updateVal(potentialDispId.replace('v_', ''), e.target.value);
+
+                // Если это инпуты отверстий - ничего страшного, они обработаются в generateSVGs
+                if(document.getElementById('autoUpdate').checked) renderAll(); 
+            });
+        });
+    }
+
+    ['pencil','marker','eraser'].forEach(t => document.getElementById(`tool-${t}`).addEventListener('click', (e) => { if(activeTool===t) { activeTool=null; e.target.classList.remove('active'); } else { ['pencil','marker','eraser'].forEach(x=>document.getElementById(`tool-${x}`).classList.remove('active')); activeTool=t; e.target.classList.add('active'); } }));
+    document.getElementById('generateBtn').onclick = () => renderAll();
+    
+    document.getElementById('exportBtn').addEventListener('click', () => { alert('Сохранение настроек в JSON (функция активна)'); });
+    document.getElementById('importBtn').addEventListener('click', () => document.getElementById('importFile').click());
+    
+    function renderAll() { generateSVGs(); }
+    
+    // Запуск
+    window.onload = () => {
+        attachAutoUpdate(); // Вешаем события на всё
+        renderAll();
+    };
+
+/* ============ Handwriter: фоторежим «страница на столе» ============
+   Встраивается в конец основного <script>. Работает с уже готовыми
+   generatedSVGs[], getHolePosForPage(), PAGE_WIDTH_PX, MM_TO_PX и т.д.  */
+(function () {
+    'use strict';
+    var RES = { '12': [3024, 4032], '8': [2448, 3264], '4': [1728, 2304] };
+    var deskImg = null;
+
+    function $(id) { return document.getElementById(id); }
+    function setStatus(t) { var s = $('photoStatus'); if (s) s.textContent = t; }
+    function cnv(w, h) {
+        var c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(w)); c.height = Math.max(1, Math.round(h));
+        return c;
+    }
+    function rnd(a, b) { return a + Math.random() * (b - a); }
+
+    /* ---------------- шум / текстуры ---------------- */
+    function grain(ctx, w, h, amount) {
+        if (amount <= 0) return;
+        var img = ctx.getImageData(0, 0, w, h), d = img.data, i, n;
+        for (i = 0; i < d.length; i += 4) {
+            n = (Math.random() - 0.5) * amount * 16;
+            d[i] += n; d[i + 1] += n; d[i + 2] += n * 0.9;
+        }
+        ctx.putImageData(img, 0, 0);
+    }
+
+    function paperFill(w, h) {
+        var c = cnv(w, h), g = c.getContext('2d', { willReadFrequently: true });
+        g.fillStyle = '#fbf9f1';
+        g.fillRect(0, 0, w, h);
+        var img = g.getImageData(0, 0, w, h), d = img.data, i, n;
+        for (i = 0; i < d.length; i += 4) {
+            n = (Math.random() - 0.5) * 9;
+            d[i] += n; d[i + 1] += n; d[i + 2] += n * 1.1;
+        }
+        g.putImageData(img, 0, 0);
+        // редкие волокна
+        g.globalAlpha = 0.05;
+        for (i = 0; i < Math.round(w * h / 9000); i++) {
+            var x = Math.random() * w, y = Math.random() * h, L = rnd(4, w * 0.06);
+            g.strokeStyle = Math.random() < 0.5 ? '#8a7f66' : '#ffffff';
+            g.lineWidth = rnd(0.6, 1.8);
+            g.beginPath(); g.moveTo(x, y);
+            g.bezierCurveTo(x + L * 0.3, y + rnd(-2, 2), x + L * 0.6, y + rnd(-2, 2), x + L, y + rnd(-1, 1));
+            g.stroke();
+        }
+        g.globalAlpha = 1;
+        // затемнение к краям (толщина/изгиб)
+        var rg = g.createRadialGradient(w * 0.45, h * 0.4, Math.min(w, h) * 0.35, w * 0.5, h * 0.5, Math.max(w, h) * 0.72);
+        rg.addColorStop(0, 'rgba(0,0,0,0)');
+        rg.addColorStop(1, 'rgba(120,105,80,0.10)');
+        g.fillStyle = rg; g.fillRect(0, 0, w, h);
+        return c;
+    }
+
+    function paintDesk(g, w, h, variant) {
+        var palette = {
+            oak: ['#8b6540', '#6f4d2f', '#a67d50'],
+            walnut: ['#4b3325', '#2f2018', '#6d4c35'],
+            laminate: ['#9aa1a7', '#7f868d', '#bcc1c6'],
+            white: ['#e9e7e2', '#d7d4ce', '#f8f6f1']
+        }[variant] || ['#8b6540', '#6f4d2f', '#a67d50'];
+
+        g.fillStyle = palette[0];
+        g.fillRect(0, 0, w, h);
+
+        // доски
+        var planks = 3, i, j, ph = h / planks;
+        for (i = 0; i < planks; i++) {
+            g.fillStyle = i % 2 ? 'rgba(255,255,255,0.035)' : 'rgba(0,0,0,0.045)';
+            g.fillRect(0, i * ph, w, ph);
+            if (variant !== 'white') {
+                g.fillStyle = 'rgba(0,0,0,0.42)';
+                g.fillRect(0, i * ph, w, rnd(1.5, 3));
+                g.fillStyle = 'rgba(255,255,255,0.10)';
+                g.fillRect(0, i * ph + 3.5, w, 1.5);
+            }
+        }
+
+        // крупные пятна тона — без них доска выглядит ровной заливкой
+        if (variant === 'oak' || variant === 'walnut') {
+            for (i = 0; i < 420; i++) {
+                var mx = rnd(0, w), my = rnd(0, h), rr = rnd(w * 0.008, w * 0.05);
+                var dark = Math.random() < 0.55, al = rnd(0.03, 0.10);
+                var grd = g.createRadialGradient(mx, my, 0, mx, my, rr);
+                grd.addColorStop(0, (dark ? 'rgba(38,22,9,' : 'rgba(255,226,180,') + (dark ? al : al * 0.75).toFixed(3) + ')');
+                grd.addColorStop(1, dark ? 'rgba(38,22,9,0)' : 'rgba(255,226,180,0)');
+                g.fillStyle = grd;
+                g.save();
+                g.translate(mx, my); g.scale(1, rnd(0.25, 0.62)); g.translate(-mx, -my);
+                g.beginPath(); g.arc(mx, my, rr, 0, Math.PI * 2); g.fill();
+                g.restore();
+            }
+            // широкие полосы — фигура дерева
+            for (i = 0; i < 28; i++) {
+                var sy = Math.random() * h, sx = rnd(-w * 0.15, w * 0.85);
+                var sl = rnd(w * 0.2, w * 0.9), sa = rnd(2, 9);
+                g.beginPath(); g.moveTo(sx, sy);
+                g.bezierCurveTo(sx + sl * 0.33, sy + rnd(-sa, sa), sx + sl * 0.66, sy + rnd(-sa, sa), sx + sl, sy + rnd(-sa * 0.5, sa * 0.5));
+                g.strokeStyle = Math.random() < 0.5 ? 'rgba(40,24,10,' + rnd(0.04, 0.11).toFixed(3) + ')' : 'rgba(255,232,190,' + rnd(0.03, 0.08).toFixed(3) + ')';
+                g.lineWidth = rnd(w * 0.004, w * 0.018);
+                g.stroke();
+            }
+        }
+
+        // волокна
+        var n = Math.round(w * h / 380);
+        for (i = 0; i < n; i++) {
+            var y = Math.random() * h, x = Math.random() * w, len = rnd(w * 0.03, w * 0.4), amp = rnd(1, 8);
+            g.beginPath(); g.moveTo(x, y);
+            g.bezierCurveTo(x + len * 0.3, y + rnd(-amp, amp), x + len * 0.7, y + rnd(-amp, amp), x + len, y + rnd(-amp * 0.4, amp * 0.4));
+            if (Math.random() < 0.62) g.strokeStyle = 'rgba(26,14,5,' + rnd(0.04, 0.15).toFixed(3) + ')';
+            else g.strokeStyle = 'rgba(255,230,190,' + rnd(0.03, 0.11).toFixed(3) + ')';
+            g.lineWidth = rnd(0.6, 2.2);
+            g.stroke();
+        }
+
+        // сучки
+        if (variant === 'oak' || variant === 'walnut') {
+            for (j = 0; j < 3; j++) {
+                var kx = rnd(w * 0.1, w * 0.9), ky = rnd(h * 0.1, h * 0.9), kr = rnd(w * 0.01, w * 0.028);
+                for (i = 0; i < 7; i++) {
+                    g.beginPath();
+                    g.ellipse(kx, ky, kr * (1 + i * 0.55), kr * (0.55 + i * 0.3), rnd(0, 3), 0, Math.PI * 2);
+                    g.strokeStyle = 'rgba(30,18,8,' + (0.16 - i * 0.018).toFixed(3) + ')';
+                    g.lineWidth = rnd(1, 3);
+                    g.stroke();
+                }
+            }
+        }
+
+        // общее освещение
+        var lg = g.createLinearGradient(0, 0, w * 0.85, h);
+        lg.addColorStop(0, 'rgba(255,242,215,0.20)');
+        lg.addColorStop(0.5, 'rgba(0,0,0,0)');
+        lg.addColorStop(1, 'rgba(0,0,0,0.22)');
+        g.fillStyle = lg; g.fillRect(0, 0, w, h);
+
+        grain(g, w, h, 0.5);
+    }
+
+    function drawCover(g, img, w, h) {
+        var s = Math.max(w / img.width, h / img.height);
+        var dw = img.width * s, dh = img.height * s;
+        g.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+    }
+
+    /* ---------------- разлиновка ---------------- */
+    function drawRuling(g, W, H, mode) {
+        if (mode === 'none') return;
+        var k = W / PAGE_WIDTH_PX;
+        var L = window.__hwLayout;
+        g.save();
+        g.strokeStyle = 'rgba(118,158,205,0.42)';
+        g.lineWidth = Math.max(1, k * 0.9);
+        var i, step, off;
+        if (mode === 'grid') {
+            /* клетка — ровно та же, что в раскладке текста (иначе строки «съезжают») */
+            var gw = (getMm('gridW') || 5) * MM_TO_PX * k;
+            var gh = (getMm('gridH') || 5) * MM_TO_PX * k;
+            var ox = (getMm('gridOffsetXMm') || 0) * MM_TO_PX * k;
+            var oy = (getMm('gridOffsetYMm') || 0) * MM_TO_PX * k;
+            if (gw > 2) for (i = ox + gw * Math.ceil((1 - ox) / gw); i < W; i += gw) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i, H); g.stroke(); }
+            if (gh > 2) for (i = oy + gh * Math.ceil((1 - oy) / gh); i < H; i += gh) { g.beginPath(); g.moveTo(0, i); g.lineTo(W, i); g.stroke(); }
+        } else {
+            /* линейка: каждая линия проходит точно под строкой текста (с учётом сдвига сетки) */
+            off = (getMm('gridOffsetYMm') || 0) * MM_TO_PX * k;
+            if (L && L.snap && L.step > 2) {
+                step = L.step * k;
+                var b0 = (L.firstBase + L.lift) * k;   // уже включает сдвиг
+                var i0 = b0 - Math.floor(b0 / step) * step;
+                for (i = i0; i < H; i += step) { g.beginPath(); g.moveTo(0, i); g.lineTo(W, i); g.stroke(); }
+            } else {
+                step = 8 * MM_TO_PX * k;
+                for (i = off + step * Math.ceil((1 - off) / step); i < H; i += step) { g.beginPath(); g.moveTo(0, i); g.lineTo(W, i); g.stroke(); }
+            }
+        }
+        g.restore();
+    }
+
+    /* ---------------- страница -> растр ---------------- */
+    function rasterizePage(idx, S) {
+        return new Promise(function (resolve, reject) {
+            var svg = generatedSVGs[idx];
+            // выкидываем служебную клетку и чёрные отверстия — их рисуем сами
+            svg = svg.replace(/<g stroke="#e0e0e0"[\s\S]*?<\/g>/, '');
+            svg = svg.replace(/<g fill="#333">[\s\S]*?<\/g>/, '');
+            var W = Math.round(PAGE_WIDTH_PX * S), H = Math.round(PAGE_HEIGHT_PX * S);
+            svg = svg.replace(/width="[\d.]+px"/, 'width="' + W + '"')
+                     .replace(/height="[\d.]+px"/, 'height="' + H + '"');
+            var blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+            var url = URL.createObjectURL(blob);
+            var im = new Image();
+            im.onload = function () { URL.revokeObjectURL(url); resolve({ img: im, W: W, H: H }); };
+            im.onerror = function () { URL.revokeObjectURL(url); reject(new Error('SVG не отрисовался')); };
+            im.src = url;
+        });
+    }
+
+    /* uOff/vOff — сдвиг в долях листа (чтобы дырки нижнего листа совпали в кадре) */
+    function punchHoles(g, W, H, idx, uOff, vOff) {
+        if (!$('showHolesCheck').checked) return;
+        uOff = uOff || 0; vOff = vOff || 0;
+        var ku = W / PAGE_WIDTH_PX, kv = H / PAGE_HEIGHT_PX, r = HOLE_RADIUS_PX * ku;
+        g.save();
+        for (var i = 0; i < 4; i++) {
+            var p = getHolePosForPage(i, idx);
+            var cx = (p.x / PAGE_WIDTH_PX + uOff) * W;
+            var cy = (p.y / PAGE_HEIGHT_PX + vOff) * H;
+            g.globalCompositeOperation = 'destination-out';
+            g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fill();
+            g.globalCompositeOperation = 'source-over';
+            g.strokeStyle = 'rgba(0,0,0,0.22)';
+            g.lineWidth = Math.max(1, r * 0.18);
+            g.beginPath(); g.arc(cx, cy, r + g.lineWidth / 2, 0, Math.PI * 2); g.stroke();
+        }
+        g.restore();
+    }
+
+    /* ---------------- геометрия листа ---------------- */
+    function pageQuad(w, h, o) {
+        var cx = w / 2 + o.dx, cy = h / 2 + o.dy;
+        var tw = o.pageW * (1 - o.persp), bw = o.pageW * (1 + o.persp);
+        var ph = o.pageH;
+        var pts = [[-tw / 2, -ph / 2], [tw / 2, -ph / 2], [bw / 2, ph / 2], [-bw / 2, ph / 2]];
+        var a = o.tilt * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a);
+        return pts.map(function (p) {
+            return { x: cx + p[0] * ca - p[1] * sa, y: cy + p[0] * sa + p[1] * ca };
+        });
+    }
+
+    function offsetQuad(q, dx, dy, extraTilt) {
+        var cx = 0, cy = 0, i;
+        for (i = 0; i < 4; i++) { cx += q[i].x / 4; cy += q[i].y / 4; }
+        var a = extraTilt * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a);
+        return q.map(function (p) {
+            var x = p.x - cx, y = p.y - cy;
+            return { x: cx + x * ca - y * sa + dx, y: cy + x * sa + y * ca + dy };
+        });
+    }
+
+    function qpath(g, q) {
+        g.beginPath();
+        g.moveTo(q[0].x, q[0].y);
+        g.lineTo(q[1].x, q[1].y);
+        g.lineTo(q[2].x, q[2].y);
+        g.lineTo(q[3].x, q[3].y);
+        g.closePath();
+    }
+
+    function bbox(q) {
+        var x0 = Math.min(q[0].x, q[1].x, q[2].x, q[3].x);
+        var x1 = Math.max(q[0].x, q[1].x, q[2].x, q[3].x);
+        var y0 = Math.min(q[0].y, q[1].y, q[2].y, q[3].y);
+        var y1 = Math.max(q[0].y, q[1].y, q[2].y, q[3].y);
+        return { x0: x0, x1: x1, y0: y0, y1: y1 };
+    }
+
+    /* ---------------- перспективное наложение ---------------- */
+    function tri(ctx, img, s0, s1, s2, d0, d1, d2) {
+        var den = (s1.x - s0.x) * (s2.y - s0.y) - (s2.x - s0.x) * (s1.y - s0.y);
+        if (Math.abs(den) < 1e-6) return;
+
+        var a = ((d1.x - d0.x) * (s2.y - s0.y) - (d2.x - d0.x) * (s1.y - s0.y)) / den;
+        var b = ((d2.x - d0.x) * (s1.x - s0.x) - (d1.x - d0.x) * (s2.x - s0.x)) / den;
+        var c = d0.x - a * s0.x - b * s0.y;
+        var d = ((d1.y - d0.y) * (s2.y - s0.y) - (d2.y - d0.y) * (s1.y - s0.y)) / den;
+        var e = ((d2.y - d0.y) * (s1.x - s0.x) - (d1.y - d0.y) * (s2.x - s0.x)) / den;
+        var f = d0.y - d * s0.x - e * s0.y;
+
+        // суб-прямоугольник источника (чтобы не рисовать весь лист 560 раз)
+        var sx0 = Math.max(0, Math.floor(Math.min(s0.x, s1.x, s2.x)));
+        var sy0 = Math.max(0, Math.floor(Math.min(s0.y, s1.y, s2.y)));
+        var sx1 = Math.min(img.width, Math.ceil(Math.max(s0.x, s1.x, s2.x)));
+        var sy1 = Math.min(img.height, Math.ceil(Math.max(s0.y, s1.y, s2.y)));
+        var sw = sx1 - sx0, sh = sy1 - sy0;
+        if (sw <= 0 || sh <= 0) return;
+
+        ctx.save();
+        // клип чуть больше треугольника — убирает швы между ячейками
+        var mx = (d0.x + d1.x + d2.x) / 3, my = (d0.y + d1.y + d2.y) / 3;
+        function grow(p) {
+            var dx = p.x - mx, dy = p.y - my, L = Math.hypot(dx, dy) || 1;
+            return { x: p.x + dx / L * 0.8, y: p.y + dy / L * 0.8 };
+        }
+        var g0 = grow(d0), g1 = grow(d1), g2 = grow(d2);
+        ctx.beginPath();
+        ctx.moveTo(g0.x, g0.y); ctx.lineTo(g1.x, g1.y); ctx.lineTo(g2.x, g2.y);
+        ctx.closePath(); ctx.clip();
+
+        ctx.setTransform(a, d, b, e, a * sx0 + b * sy0 + c, d * sx0 + e * sy0 + f);
+        ctx.drawImage(img, sx0, sy0, sw, sh, 0, 0, sw, sh);
+        ctx.restore();
+    }
+
+    function warpImage(ctx, img, q, nx, ny) {
+        var W = img.width, H = img.height;
+        function P(u, v) {
+            var tx = q[0].x + (q[1].x - q[0].x) * u, ty = q[0].y + (q[1].y - q[0].y) * u;
+            var bx = q[3].x + (q[2].x - q[3].x) * u, by = q[3].y + (q[2].y - q[3].y) * u;
+            return { x: tx + (bx - tx) * v, y: ty + (by - ty) * v };
+        }
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        for (var j = 0; j < ny; j++) {
+            for (var i = 0; i < nx; i++) {
+                var u0 = i / nx, u1 = (i + 1) / nx, v0 = j / ny, v1 = (j + 1) / ny;
+                var s0 = { x: u0 * W, y: v0 * H }, s1 = { x: u1 * W, y: v0 * H };
+                var s2 = { x: u1 * W, y: v1 * H }, s3 = { x: u0 * W, y: v1 * H };
+                var d0 = P(u0, v0), d1 = P(u1, v0), d2 = P(u1, v1), d3 = P(u0, v1);
+                tri(ctx, img, s0, s1, s2, d0, d1, d2);
+                tri(ctx, img, s0, s2, s3, d0, d2, d3);
+            }
+        }
+    }
+
+    function shadeQuad(g, q, strength) {
+        var bb = bbox(q), wq = bb.x1 - bb.x0;
+        g.save(); qpath(g, q); g.clip();
+        var lg = g.createLinearGradient(bb.x0, bb.y0, bb.x1, bb.y1);
+        lg.addColorStop(0, 'rgba(255,246,224,' + (0.18 * strength).toFixed(3) + ')');
+        lg.addColorStop(0.45, 'rgba(255,255,255,0)');
+        lg.addColorStop(1, 'rgba(25,14,0,' + (0.22 * strength).toFixed(3) + ')');
+        g.fillStyle = lg;
+        g.fillRect(bb.x0, bb.y0, bb.x1 - bb.x0, bb.y1 - bb.y0);
+        // тень у корешка
+        var sg = g.createLinearGradient(bb.x0, 0, bb.x0 + wq * 0.13, 0);
+        sg.addColorStop(0, 'rgba(0,0,0,0.20)');
+        sg.addColorStop(1, 'rgba(0,0,0,0)');
+        g.fillStyle = sg;
+        g.fillRect(bb.x0, bb.y0, wq * 0.13, bb.y1 - bb.y0);
+        g.restore();
+    }
+
+    function vignette(g, w, h) {
+        var rg = g.createRadialGradient(w * 0.5, h * 0.45, Math.min(w, h) * 0.28, w * 0.5, h * 0.5, Math.max(w, h) * 0.78);
+        rg.addColorStop(0, 'rgba(0,0,0,0)');
+        rg.addColorStop(1, 'rgba(0,0,0,0.34)');
+        g.fillStyle = rg; g.fillRect(0, 0, w, h);
+        g.fillStyle = 'rgba(255,206,142,0.045)'; g.fillRect(0, 0, w, h);
+    }
+
+    /* ---------------- сборка фото ---------------- */
+    function exportPhoto() {
+        if (!generatedSVGs.length) { setStatus('Сначала нажми ОБНОВИТЬ'); return; }
+        var btn = $('photoBtn'); btn.disabled = true;
+
+        var size = RES[$('photoRes').value] || RES['8'];
+        var w = size[0], h = size[1];
+        var S = (w * getVal('photoScale')) / PAGE_WIDTH_PX;
+        setStatus('1/4 · растеризую страницу…');
+
+        rasterizePage(currentPageIndex, S).then(function (page) {
+            var paper = paperFill(page.W, page.H);
+            var pg = paper.getContext('2d');
+            drawRuling(pg, page.W, page.H, $('ruling').value);
+            pg.globalCompositeOperation = 'multiply';
+            pg.drawImage(page.img, 0, 0, page.W, page.H);
+            pg.globalCompositeOperation = 'source-over';
+            punchHoles(pg, page.W, page.H, currentPageIndex);
+
+            setStatus('2/4 · стол и перспектива…');
+            var desk = cnv(w, h);
+            var dg = desk.getContext('2d', { willReadFrequently: true });
+            if ($('deskStyle').value === 'custom' && deskImg) drawCover(dg, deskImg, w, h);
+            else paintDesk(dg, w, h, $('deskStyle').value);
+
+            var scale = getVal('photoScale');
+            var q = pageQuad(w, h, {
+                pageW: w * scale,
+                pageH: w * scale * (page.H / page.W),
+                tilt: getVal('photoTilt'),
+                persp: getVal('photoPersp'),
+                dx: getVal('photoDx'),
+                dy: getVal('photoDy')
+            });
+            var shadow = getVal('photoShadow');
+            var light = getVal('photoLight');
+
+            // лист под низом (дырки в нём просвечивают в свои же отверстия верхнего листа)
+            if ($('underSheet').checked) {
+                var usx = w * 0.012, usy = h * 0.014;
+                var q2 = offsetQuad(q, usx, usy, -1.8);
+                var us = smallPaper();
+                var ug = us.getContext('2d');
+                ug.fillStyle = 'rgba(60,45,25,0.10)';
+                ug.fillRect(0, 0, us.width, us.height);
+                punchHoles(ug, us.width, us.height, currentPageIndex, 0, 0);
+                dg.save();
+                dg.shadowColor = 'rgba(0,0,0,' + (0.5 * shadow).toFixed(3) + ')';
+                dg.shadowBlur = w * 0.014;
+                dg.shadowOffsetX = w * 0.003; dg.shadowOffsetY = w * 0.005;
+                qpath(dg, q2); dg.fillStyle = '#efe9da'; dg.fill();
+                dg.restore();
+                warpImage(dg, us, q2, 12, 16);
+            }
+
+            // тень основного листа
+            dg.save();
+            dg.shadowColor = 'rgba(0,0,0,' + (0.62 * shadow).toFixed(3) + ')';
+            dg.shadowBlur = w * 0.016;
+            dg.shadowOffsetX = w * 0.004; dg.shadowOffsetY = w * 0.006;
+            qpath(dg, q); dg.fillStyle = '#000'; dg.fill();
+            dg.restore();
+
+            setStatus('3/4 · накладываю лист…');
+            warpImage(dg, paper, q, 16, 22);
+            shadeQuad(dg, q, light);
+
+            setStatus('4/4 · зерно и JPG…');
+            vignette(dg, w, h);
+            grain(dg, w, h, getVal('photoNoise'));
+
+            desk.toBlob(function (blob) {
+                var name = 'photo_page' + (currentPageIndex + 1) + '.jpg';
+                if (window.saveAs) saveAs(blob, name);
+                else {
+                    var a = document.createElement('a');
+                    a.href = URL.createObjectURL(blob); a.download = name;
+                    document.body.appendChild(a); a.click(); a.remove();
+                }
+                setStatus('Готово: ' + w + '×' + h + ', ' + Math.round(blob.size / 1024) + ' КБ');
+                btn.disabled = false;
+            }, 'image/jpeg', 0.9);
+        }).catch(function (err) {
+            setStatus('Ошибка: ' + err.message);
+            btn.disabled = false;
+            console.error(err);
+        });
+    }
+
+    /* ---------------- инициализация панели ---------------- */
+    var _small = null;
+    function smallPaper() {
+        // строим каждый раз заново: на нижний лист наносятся затемнение и дырки
+        return paperFill(320, 452);
+    }
+
+
+    /* ---------- ИИ-блок в этой копии не подключён: кнопки объясняют это вслух ---------- */
+    var AI_DEAD_MSG = 'ИИ в этой копии не подключён. Откройте файл «handwritten text.html» в этой же папке — там ИИ работает.';
+    function aiDeadNotice() {
+        var s = $('aiStatus');
+        if (s) {
+            s.textContent = AI_DEAD_MSG;
+            s.style.color = '#8a5a00';
+        }
+    }
+
+    function bindAiStub() {
+        ['aiProcessBtn', 'aiCheckBtn', 'aiCancelBtn', 'aiResetBtn', 'aiToFieldBtn'].forEach(function (id) {
+            var b = $(id);
+            if (!b) return;
+            b.addEventListener('click', function () { aiDeadNotice(); });
+        });
+        var key = $('aiApiKey');
+        if (key) key.addEventListener('change', aiDeadNotice);
+    }
+
+    function bind() {
+        bindAiStub();
+
+        var b = $('photoBtn');
+        if (!b) return;
+        b.addEventListener('click', exportPhoto);
+
+        var f = $('deskPhoto');
+        if (f) f.addEventListener('change', function (e) {
+            var file = e.target.files[0];
+            if (!file) return;
+            var im = new Image();
+            im.onload = function () {
+                deskImg = im;
+                $('deskStyle').value = 'custom';
+                setStatus('Фон стола загружен: ' + im.width + '×' + im.height);
+            };
+            im.src = URL.createObjectURL(file);
+        });
+    }
+
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bind);
+    else bind();
+})();
+
+</script>
+</body>
+</html>
